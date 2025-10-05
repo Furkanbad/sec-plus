@@ -1,18 +1,18 @@
 import React from "react";
-import Link from "next/link"; // Link bileşenini import ediyoruz
+import Link from "next/link";
 import {
   DocumentIcon,
   AiAnalysisArrowIcon,
   DocType10K10Q,
   DocType8K,
-} from "./icons";
+} from "./icons"; // Assuming these icons are defined in a separate file
 
 interface InsightCardProps {
   type: string;
   title: string;
   description: string;
   source: string;
-  icon: string; // Changed to string for characters like '⚠', '✓', 'i'
+  icon: string;
   bgColor: string;
   textColor: string;
 }
@@ -51,62 +51,56 @@ const InsightCard: React.FC<InsightCardProps> = ({
 
 const HeroSection: React.FC = () => {
   return (
-    <section className="relative overflow-hidden bg-gradient-to-b from-white to-gray-50 pt-20 pb-32">
-      <div className="container mx-auto max-w-6xl px-6">
-        <div className="grid gap-12 lg:grid-cols-2 items-center">
+    <section className="relative overflow-hidden bg-gradient-to-b from-white to-gray-50 flex items-center min-h-[calc(100vh-5rem)] py-8">
+      <div className="container mx-auto max-w-screen-2xl px-6">
+        <div className="grid gap-8 lg:grid-cols-2 items-start">
           {/* Left side - Text */}
           <div>
-            <h1 className="mb-6 text-5xl font-bold leading-tight text-gray-900 md:text-6xl">
+            <h1 className="mb-4 text-4xl font-bold leading-tight text-gray-900 md:text-5xl">
               AI-Powered{" "}
               <span className="text-[#0C213A]">SEC Filing Analysis</span> in
               Minutes
             </h1>
-
-            <div className="mb-8 h-1 w-24 bg-[#0C213A] rounded-full"></div>
-
-            <h3 className="mb-12 text-xl text-gray-600 font-normal leading-relaxed">
+            <div className="mb-6 h-1 w-20 bg-[#0C213A] rounded-full"></div>
+            <h3 className="mb-8 text-lg font-medium text-gray-700 leading-relaxed">
+              {" "}
+              {/* Değişiklik burada: font-normal -> font-medium, text-gray-600 -> text-gray-700 */}
               Transform complex 10-Ks and 10-Qs into clear, actionable insights.
               Every analysis backed by exact source citations. No
               hallucinations, only verified facts.
             </h3>
-
-            <div className="flex flex-col items-start gap-4">
-              {/* Link bileşenini kullanarak butonu sarmalıyoruz */}
+            <div className="flex flex-col items-start gap-3">
               <Link href="/insights" passHref legacyBehavior>
-                <button className="h-12 rounded-full bg-[#0C213A] px-8 text-base font-medium text-white shadow-lg hover:bg-[#0A1A2E] transition-all hover:shadow-xl cursor-pointer">
+                <button className="h-11 rounded-full bg-[#0C213A] px-7 text-sm font-medium text-white shadow-lg hover:bg-[#0A1A2E] transition-all hover:shadow-xl cursor-pointer">
                   Start Free Trial
                 </button>
               </Link>
-
-              <p className="text-sm text-gray-500">
+              <p className="text-sm text-gray-700">
                 ✓ 3 PDFs free • No credit card • Start in 30 seconds
               </p>
             </div>
-
-            <div className="mt-12 flex items-center gap-8">
+            <div className="mt-8 flex items-center gap-6">
               <div className="text-center">
-                <div className="mb-2 inline-flex h-12 w-12 items-center justify-center">
+                <div className="mb-1 inline-flex h-10 w-10 items-center justify-center">
                   <DocType10K10Q />
                 </div>
-                <p className="text-sm font-normal text-gray-700">10-K & 10-Q</p>
+                <p className="text-xs font-normal text-gray-700">10-K & 10-Q</p>
               </div>
-
               <div className="text-center">
-                <div className="mb-2 inline-flex h-12 w-12 items-center justify-center">
+                <div className="mb-1 inline-flex h-10 w-10 items-center justify-center">
                   <DocType8K />
                 </div>
-                <p className="text-sm font-normal text-gray-700">8-K & More</p>
+                <p className="text-xs font-normal text-gray-700">8-K & More</p>
               </div>
             </div>
           </div>
-
           {/* Right side - Visual */}
           <div className="relative">
-            <div className="relative rounded-2xl bg-gray-50 p-8 shadow-xl border border-gray-200">
+            <div className="relative rounded-2xl bg-gray-50 p-6 shadow-xl border border-gray-200">
               {/* PDF Upload Visual */}
-              <div className="mb-6 rounded-xl bg-white p-5 shadow-md border border-gray-200">
-                <div className="mb-4 flex items-center gap-3">
-                  <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-[#0C213A]">
+              <div className="mb-4 rounded-xl bg-white p-4 shadow-md border border-gray-200">
+                <div className="mb-3 flex items-center gap-2">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#0C213A]">
                     <DocumentIcon />
                   </div>
                   <div className="flex-1">
@@ -118,24 +112,22 @@ const HeroSection: React.FC = () => {
                     </div>
                   </div>
                 </div>
-                <div className="h-2 w-full rounded-full bg-gray-200">
-                  <div className="h-2 w-full rounded-full bg-[#0C213A]"></div>
+                <div className="h-1.5 w-full rounded-full bg-gray-200">
+                  <div className="h-1.5 w-full rounded-full bg-[#0C213A]"></div>
                 </div>
               </div>
-
               {/* Arrow */}
-              <div className="mb-6 flex justify-center">
-                <div className="flex items-center gap-2 bg-white px-4 py-2 rounded-lg border border-gray-200">
-                  <div className="h-0.5 w-8 rounded-full bg-[#0C213A]"></div>
+              <div className="mb-4 flex justify-center">
+                <div className="flex items-center gap-1 bg-white px-3 py-1.5 rounded-lg border border-gray-200">
+                  <div className="h-0.5 w-6 rounded-full bg-[#0C213A]"></div>
                   <AiAnalysisArrowIcon />
                   <div className="text-xs font-semibold text-[#0C213A]">
                     AI Analysis
                   </div>
                 </div>
               </div>
-
               {/* Insights Output */}
-              <div className="space-y-3">
+              <div className="space-y-2">
                 <InsightCard
                   type="Key Risk"
                   title="Revenue decline in Q4"
