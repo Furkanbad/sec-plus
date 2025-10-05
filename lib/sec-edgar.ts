@@ -1,5 +1,6 @@
 // lib/sec-edgar.ts
 import { SECFiling, SECSearchRequest } from "@/types/sec-analysis";
+import * as cheerio from "cheerio"; // Cheerio'yu import et
 
 const SEC_BASE_URL = "https://www.sec.gov";
 const USER_AGENT = "SEC Plus+ info@secplus.com"; // SEC requires user agent
@@ -154,59 +155,161 @@ export class SECEdgarClient {
    */
   parseSections(html: string): Record<string, string> {
     const sections: Record<string, string> = {};
+    const $ = cheerio.load(html); // Cheerio ile HTML'i yükle
 
-    // Remove script and style tags
-    let cleanHtml = html.replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "");
-    cleanHtml = cleanHtml.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "");
+    // --- Önemli Temizlik Adımları ---
+    // iXBRL'de gizli (display: none) veya anlamsız <ix:*> etiketlerini kaldır
+    $(
+      "script, style, ix\\:hidden, ix\\:nonNumeric, ix\\:continuation, ix\\:fraction"
+    ).remove();
+    // Yaygın olarak boş veya anlamsız olan gizli div'leri kaldır
+    $('[style*="display:none"]').remove();
+    $("[hidden]").remove(); // HTML5 hidden attribute
 
-    // Convert to text but preserve some structure
-    const cleanText = cleanHtml
-      .replace(/<br\s*\/?>/gi, "\n")
-      .replace(/<\/p>/gi, "\n")
-      .replace(/<\/div>/gi, "\n")
-      .replace(/<[^>]+>/g, " ")
+    // Ana içerik alanını bulmaya çalış
+    // Bu kısım SEC dosyalarının HTML yapısına göre en çok değişen yerdir.
+    // Farklı dosyalarda farklı id/class isimleri olabilir.
+    // 'wrapper_div', 'contentDiv', 'formSection', 'document' gibi isimleri deneyin.
+    let contentArea = $(
+      "div#formDiv, div#contentDiv, div.document, body"
+    ).first();
+
+    // Eğer ana içerik bulunamazsa, tüm body'yi kullan
+    if (contentArea.length === 0) {
+      contentArea = $("body").first();
+    }
+
+    // Geçici olarak, tüm metni çıkaralım
+    let cleanText = contentArea.text();
+    // Çoklu boşlukları tek boşluğa indirge, &nbsp; ve &amp; gibi HTML entity'lerini düzelt
+    cleanText = cleanText
       .replace(/&nbsp;/g, " ")
       .replace(/&amp;/g, "&")
       .replace(/\s+/g, " ")
       .trim();
 
-    console.log(`📄 Total text length: ${cleanText.length} characters`);
+    console.log(`📄 Cleaned text length: ${cleanText.length} characters`);
+    console.log("--- START OF CLEAN TEXT PREVIEW ---");
+    console.log(cleanText.substring(0, 5000)); // İlk 5000 karakteri bas
+    console.log("--- END OF CLEAN TEXT PREVIEW ---");
 
-    // Skip Table of Contents by finding "PART I" or first actual content
-    const tocEnd = cleanText.search(
-      /(?:PART\s+I[^\w]|Item\s+1\.\s+Business\s+[A-Z])/i
-    );
-    const startFrom = tocEnd > 0 ? tocEnd : 0;
-    const contentText = cleanText.substring(startFrom);
-
-    console.log(`📍 Starting content search from position: ${startFrom}`);
-
-    // More flexible section patterns - look for actual content, not TOC
+    // --- Bölüm Başlıklarını Bulma (Regex ile) ---
+    // Bu regex'ler, temizlenmiş metin üzerinde çalışacak.
+    // `(?:\n|^|\s)` ile başlangıçta satır başı veya boşluk arayarak eşleşmenin doğru yere olmasını sağlamaya çalışıyoruz.
     const sectionPatterns = [
       {
         key: "business",
-        regex:
-          /(?:^|\n)\s*ITEM\s*1[\.\s]+(?:BUSINESS|Description of Business)[\s\n]+(?=[A-Z])/i,
-        endRegex: /(?:^|\n)\s*ITEM\s*1A/i,
+        // Business için TOC sonrası özel bir durum olmayabilir, bu kalsın
+        regex: /(?:\n|^|\s)(?:ITEM\s*1\.\s*BUSINESS|BUSINESS)(?:\s+|-|\n|$)/i,
+        endRegex:
+          /(?:\n|^|\s)(?:ITEM\s*1A|ITEM\s*2\.\s*PROPERTIES)(?:\s+|-|\n|$)/i,
       },
       {
         key: "risk",
-        regex: /(?:^|\n)\s*ITEM\s*1A[\.\s]+RISK\s*FACTORS[\s\n]+(?=[A-Z])/i,
-        endRegex: /(?:^|\n)\s*ITEM\s*(?:1B|2)/i,
+        // Risk için de aynı şekilde
+        regex:
+          /(?:\n|^|\s)(?:ITEM\s*1A\.\s*RISK\s*FACTORS|RISK\s*FACTORS)(?:\s+|-|\n|$)/i,
+        endRegex:
+          /(?:\n|^|\s)(?:ITEM\s*1B|ITEM\s*2\.\s*PROPERTIES)(?:\s+|-|\n|$)/i,
       },
       {
         key: "mdna",
+        // Başlangıç: Sayı veya herhangi bir karakterden sonra "ITEM 7"
         regex:
-          /(?:^|\n)\s*ITEM\s*7[\.\s]+(?:MANAGEMENT|Management).?S?\s+(?:DISCUSSION|Discussion)[\s\n]+(?=[A-Z])/i,
-        endRegex: /(?:^|\n)\s*ITEM\s*(?:7A|8)/i,
+          /(?:^|[\s\S])(?:ITEM\s*7[\.\s-]*MANAGEMENT(?:['’]S)?\s+DISCUSSION\s+AND\s+ANALYSIS(?:\s+OF\s+FINANCIAL\s+CONDITION\s+AND\s+RESULTS\s+OF\s+OPERATIONS)?)(\d*)(?:[\s]+|$)/i,
+        // Bitiş: Sayı veya herhangi bir karakterden sonra "ITEM 7A" veya "ITEM 8"
+        endRegex:
+          /(?:^|[\s\S])(?:ITEM\s*7A[\.\s-]*(\d*)|ITEM\s*8[\.\s-]*(\d*))(?:\s+|-|$)/i,
       },
       {
         key: "financials",
+        // Başlangıç regex'i muhtemelen doğru
         regex:
-          /(?:^|\n)\s*ITEM\s*8[\.\s]+FINANCIAL\s+STATEMENTS[\s\n]+(?=[A-Z])/i,
-        endRegex: /(?:^|\n)\s*ITEM\s*(?:9|9A)/i,
+          /(?:^|[\s\S])(?:ITEM\s*8[\.\s-]*FINANCIAL\s+STATEMENTS\s+AND\s+SUPPLEMENTARY\s+DATA)(\d*)(?:[\s]+|$)/i,
+        // Bitiş: ITEM 9 veya ITEM 9A'yı ara, öncesinde her şey olabilir (sayfa numarası dahil)
+        // Sonunda boşluk/tire yerine herhangi bir karakter veya dize sonu olabilir.
+        endRegex:
+          /(?:^|[\s\S])(?:ITEM\s*9[\.\s-]*(\d*)|ITEM\s*9A[\.\s-]*(\d*))(?:[\s\S]*?$|$)/i,
       },
     ];
+
+    let contentText = cleanText; // Üzerinde arama yapacağımız metin
+    let searchStartOffset = 0; // Metinde arama yapmaya başlanacak ofset
+
+    // --- Yeni ve Geliştirilmiş TOC Atlama Mekanizması ---
+    // TOC'un sonunu daha güvenilir bir şekilde bulmaya çalışalım.
+    // Genellikle 'Table of Contents' kelimesinden sonra gelen ve
+    // gerçek 'Item 1. Business' başlığının ilk geçtiği yere kadar olan kısmı atlamalıyız.
+    const tocKeywordMatch = contentText.match(/Table\s*of\s*Contents/i);
+    if (tocKeywordMatch && tocKeywordMatch.index !== undefined) {
+      const afterToc = contentText.substring(
+        tocKeywordMatch.index + tocKeywordMatch[0].length
+      );
+
+      // GÜNCELLENMİŞ REGEX:
+      // 'Item 1.Business4' gibi durumları da yakalamak için daha esnek.
+      // '.Business' kısmından sonra sayılar gelebileceğini varsayıyoruz.
+      const realItem1Match = afterToc.match(
+        /(?:\n|^|\s)ITEM\s*1\.\s*BUSINESS(?:[^\n\r]*?)(?:\s+|-|\n|$)/i
+      );
+      // [^\n\r]*? : Satır sonu olmayan herhangi bir karakteri (0 veya daha fazla) esnekçe eşleştirir.
+      // Bu, 'Business' kelimesinden sonra gelen sayıyı veya herhangi bir metni yakalayarak,
+      // gerçek içeriğin başladığı 'ITEM 1. BUSINESS' başlığına kadar olan kısmı doğru atlamamızı sağlar.
+
+      if (realItem1Match && realItem1Match.index !== undefined) {
+        searchStartOffset =
+          tocKeywordMatch.index +
+          tocKeywordMatch[0].length +
+          realItem1Match.index;
+        console.log(
+          `📍 Adjusted content search start past TOC. New search start offset: ${searchStartOffset}`
+        );
+      } else {
+        console.log(
+          "📍 Could not find real 'Item 1. Business' after 'Table of Contents'. Searching from start."
+        );
+      }
+    } else {
+      console.log(
+        "📍 'Table of Contents' keyword not found. Searching from start."
+      );
+    }
+
+    // contentText'i artık doğru başlangıç noktasından itibaren ayırıyoruz
+    contentText = cleanText.substring(searchStartOffset);
+    console.log(
+      `🔎 Actual content search area length: ${contentText.length} characters`
+    );
+
+    // Yeni: ContentText'in ITEM 6, 7, 8 ve 9 çevresindeki kısmını inceleyelim.
+    // Bu kısım 262047 karakter olduğu için tümünü basmak pratik değil.
+    // MD&A'nın beklenen konumunu tahmin edelim ve o bölgeyi bastıralım.
+
+    // Tahmini başlangıç ofsetlerini bulmak için 'ITEM 6' veya 'ITEM 7' araması yapalım
+    const item6Match = contentText.match(
+      /(?:\n|^|\s)ITEM\s*6\.\s*\[RESERVED\](?:\s+|-|\n|$)/i
+    );
+    let debugStartIndex = 0;
+    if (item6Match && item6Match.index !== undefined) {
+      debugStartIndex = item6Match.index;
+    } else {
+      // Eğer ITEM 6 yoksa, ITEM 7'nin ilk geçtiği yere yakın bir yerden başla
+      const item7StartMatch = contentText.match(
+        /(?:\n|^|\s)ITEM\s*7\.\s*MANAGEMENT/i
+      );
+      if (item7StartMatch && item7StartMatch.index !== undefined) {
+        debugStartIndex = Math.max(0, item7StartMatch.index - 500); // 500 karakter öncesinden başla
+      }
+    }
+
+    console.log(
+      "--- START OF TARGETED CONTENT TEXT PREVIEW (around ITEM 6-9) ---"
+    );
+    console.log(contentText.substring(debugStartIndex, debugStartIndex + 5000)); // Hedeflenen 5000 karakteri bas
+    console.log("--- END OF TARGETED CONTENT TEXT PREVIEW ---");
+    console.log(
+      `🔎 Actual content search area length: ${contentText.length} characters`
+    );
 
     for (const pattern of sectionPatterns) {
       const startMatch = contentText.match(pattern.regex);
@@ -214,21 +317,22 @@ export class SECEdgarClient {
       if (startMatch && startMatch.index !== undefined) {
         let startIndex = startMatch.index + startMatch[0].length;
 
-        // Find end of section
-        const searchText = contentText.substring(startIndex);
-        const endMatch = searchText.match(pattern.endRegex);
+        const searchTextForEnd = contentText.substring(startIndex);
+        const endMatch = searchTextForEnd.match(pattern.endRegex);
 
         let endIndex;
         if (endMatch && endMatch.index !== undefined) {
           endIndex = startIndex + endMatch.index;
         } else {
-          endIndex = Math.min(startIndex + 120000, contentText.length);
+          // Sonlandırma etiketi bulunamazsa veya son bölümse, belirli bir karakter uzunluğunu al
+          // Maksimum 200,000 karakter, aksi halde çok uzun metin AI modelini yorabilir
+          endIndex = Math.min(startIndex + 200000, contentText.length);
         }
 
         const sectionText = contentText.substring(startIndex, endIndex).trim();
 
-        // Only add if substantial content
-        if (sectionText.length > 1000) {
+        if (sectionText.length >= 0) {
+          // Sadece anlamlı uzunluktaki bölümleri al
           sections[pattern.key] = sectionText;
           console.log(`✅ Found ${pattern.key}: ${sectionText.length} chars`);
           console.log(`   Preview: ${sectionText.substring(0, 150)}...`);
