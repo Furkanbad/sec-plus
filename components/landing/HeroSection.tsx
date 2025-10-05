@@ -5,7 +5,7 @@ import {
   AiAnalysisArrowIcon,
   DocType10K10Q,
   DocType8K,
-} from "./icons"; // Assuming these icons are defined in a separate file
+} from "./icons";
 
 interface InsightCardProps {
   type: string;
@@ -56,18 +56,14 @@ const HeroSection: React.FC = () => {
         <div className="grid gap-8 lg:grid-cols-2 items-start">
           {/* Left side - Text */}
           <div>
-            <h1 className="mb-4 text-4xl font-bold leading-tight text-gray-900 md:text-5xl">
-              AI-Powered{" "}
-              <span className="text-[#0C213A]">SEC Filing Analysis</span> in
-              Minutes
+            <h1 className="mb-4 text-4xl font-semibold leading-tight text-[#2A324B] md:text-5xl tracking-tight">
+              AI-Powered SEC Filing Analysis in Minutes
             </h1>
             <div className="mb-6 h-1 w-20 bg-[#0C213A] rounded-full"></div>
-            <h3 className="mb-8 text-lg font-medium text-gray-700 leading-relaxed">
-              {" "}
-              {/* Değişiklik burada: font-normal -> font-medium, text-gray-600 -> text-gray-700 */}
-              Transform complex 10-Ks and 10-Qs into clear, actionable insights.
-              Every analysis backed by exact source citations. No
-              hallucinations, only verified facts.
+            <h3 className="mb-9 text-lg font-normal text-[#000000] leading-[1.5] max-w-2xl">
+              No more copy-paste. No more updating data manually. Instant access
+              to SEC filing insights with AI-powered analysis and exact source
+              citations.
             </h3>
             <div className="flex flex-col items-start gap-3">
               <Link href="/insights" passHref legacyBehavior>
@@ -157,6 +153,39 @@ const HeroSection: React.FC = () => {
                 />
               </div>
             </div>
+          </div>
+        </div>
+
+        {/* Güncellenmiş Stats Section - Daha yuvarlak */}
+        <div className="w-full mt-6 py-6 px-6 sm:px-12 md:px-24 lg:px-32 xl:px-48 mx-auto max-w-screen-lg bg-white rounded-4xl shadow-xl border border-gray-100 flex flex-col md:flex-row items-center justify-around gap-y-8 md:gap-y-0">
+          {/* rounded-2xl yerine rounded-3xl kullanıldı */}
+          <div className="flex flex-col items-center text-center">
+            <h2 className="text-3xl font-bold text-gray-800 mb-1">
+              <span>100</span>K+
+            </h2>
+            <h3 className="text-sm font-medium text-gray-600">
+              Documents Analyzed
+            </h3>
+          </div>
+          <div className="hidden md:block w-px h-4 bg-gray-300"></div>{" "}
+          {/* Dikey ayırıcı */}
+          <div className="flex flex-col items-center text-center">
+            <h2 className="text-3xl font-bold text-gray-800 mb-1">
+              <span>99.9</span>%
+            </h2>
+            <h3 className="text-sm font-medium text-gray-600">
+              AI Summarization Accuracy
+            </h3>
+          </div>
+          <div className="hidden md:block w-px h-4 bg-gray-300"></div>{" "}
+          {/* Dikey ayırıcı */}
+          <div className="flex flex-col items-center text-center">
+            <h2 className="text-3xl font-bold text-gray-800 mb-1">
+              <span>&lt; 5</span>s
+            </h2>
+            <h3 className="text-sm font-medium text-gray-600">
+              Average Response Time
+            </h3>
           </div>
         </div>
       </div>
