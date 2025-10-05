@@ -342,8 +342,8 @@ export default function SECReader() {
                     </p>
                     {usageRemaining === 0 && (
                       <p className="text-sm text-red-700 mt-3">
-                        You've reached your free limit. Sign up to get more PDF
-                        analyses each month (coming soon).
+                        You have reached your free limit. Sign up to get more
+                        PDF analyses each month (coming soon).
                       </p>
                     )}
                   </CardContent>
