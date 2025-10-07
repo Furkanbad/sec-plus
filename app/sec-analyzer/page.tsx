@@ -1,6 +1,7 @@
 // app/sec-analyzer/page.tsx
 "use client";
 import dynamic from "next/dynamic";
+import ErrorBoundary from "@/components/ErrorBoundary";
 
 const SplitViewAnalyzer = dynamic(
   () => import("@/components/SplitViewAnalyzer"),
@@ -20,5 +21,9 @@ const SplitViewAnalyzer = dynamic(
 );
 
 export default function SecAnalyzerPage() {
-  return <SplitViewAnalyzer />;
+  return (
+    <ErrorBoundary>
+      <SplitViewAnalyzer />
+    </ErrorBoundary>
+  );
 }

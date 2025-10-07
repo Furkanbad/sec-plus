@@ -1,12 +1,25 @@
 // app/api/analyze-sec/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import OpenAI from "openai";
-import { secApiClient } from "@/lib/sec-api-client";
-import type { SECAnalysis, SECSearchRequest } from "@/types/sec-analysis";
+import { getSecApiClient } from "@/lib/sec-api-client";
+import type {
+  SECAnalysis,
+  SECSearchRequest,
+  SECFiling,
+} from "@/types/sec-analysis";
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+let openaiClient: OpenAI | null = null;
+
+function getOpenAIClient(): OpenAI {
+  if (!openaiClient) {
+    const apiKey = process.env.OPENAI_API_KEY;
+    if (!apiKey) {
+      throw new Error("OPENAI_API_KEY is not defined");
+    }
+    openaiClient = new OpenAI({ apiKey });
+  }
+  return openaiClient;
+}
 
 export async function POST(request: NextRequest) {
   console.log("📥 SEC Analysis API called");
@@ -23,6 +36,8 @@ export async function POST(request: NextRequest) {
     }
 
     console.log(`🔍 Searching for ${ticker} ${filingType}...`);
+    const secApiClient = getSecApiClient();
+    const openai = getOpenAIClient();
 
     const filings = await secApiClient.searchFilings({
       ticker,
@@ -40,12 +55,16 @@ export async function POST(request: NextRequest) {
     const filing = filings[0];
     console.log(`📄 Found filing: ${filing.filingDate}`);
 
-    // Orijinal SEC HTML'ini fetch et
+    // Fetch original HTML
     console.log(`📥 Fetching original SEC HTML...`);
     const originalHtmlResponse = await fetch(filing.htmlUrl);
+    if (!originalHtmlResponse.ok) {
+      throw new Error("Failed to fetch original SEC HTML");
+    }
     const originalHtml = await originalHtmlResponse.text();
     console.log(`✅ Original HTML fetched: ${originalHtml.length} chars`);
 
+    // Extract sections
     console.log(`📥 Extracting all sections...`);
     const sectionsData = await secApiClient.getAllSections(filing);
 
@@ -54,45 +73,259 @@ export async function POST(request: NextRequest) {
       console.log(`   ${key}: ${value.text.length} chars`);
     });
 
-    // AI analizine text kısımlarını gönder
-    const analysis = await analyzeWithAI(filing, sectionsData);
-
+    // AI analysis
+    console.log("🤖 Starting AI analysis...");
+    const analysis = await analyzeWithAI(filing, sectionsData, openai);
     console.log("✅ Analysis complete");
+
+    // Debug: Log what sections we have
+    console.log("📊 Analysis sections found:", Object.keys(analysis.sections));
+
+    // Debug: Log sample data from each section
+    if (analysis.sections.business) {
+      console.log(
+        "Sample business data:",
+        JSON.stringify(analysis.sections.business).substring(0, 200)
+      );
+    }
+    if (analysis.sections.risks) {
+      console.log("Sample risks count:", analysis.sections.risks.length);
+    }
 
     return NextResponse.json({
       analysis,
-      originalHtml: originalHtml,
+      originalHtml,
     });
   } catch (error: unknown) {
     const errorMessage =
       error instanceof Error ? error.message : "Analysis failed";
-    console.error("❌ ERROR:", errorMessage);
+    console.error("SEC Analysis Error:", errorMessage);
     return NextResponse.json({ error: errorMessage }, { status: 500 });
   }
 }
 
 async function analyzeWithAI(
-  filing: any,
-  sectionsData: Record<string, { text: string; html: string }>
+  filing: SECFiling,
+  sectionsData: Record<string, { text: string; html: string }>,
+  openai: OpenAI
 ): Promise<SECAnalysis> {
-  const analysis: any = {
+  const analysis: SECAnalysis = {
     filing,
     sections: {},
     generatedAt: new Date().toISOString(),
   };
 
-  // Item 1: Business
-  if (sectionsData.business?.text && sectionsData.business.text.length > 500) {
-    console.log("🤖 Analyzing Business...");
-    const prompt = `Analyze this Business section:
+  // Process sections in parallel for speed
+  const analysisPromises: Promise<void>[] = [];
 
+  // Business section
+  if (sectionsData.business?.text && sectionsData.business.text.length > 500) {
+    analysisPromises.push(
+      analyzeBusinessSection(
+        sectionsData.business.text.substring(0, 20000),
+        openai
+      )
+        .then((result) => {
+          if (result) analysis.sections.business = result;
+          console.log(`✅ business analyzed`);
+        })
+        .catch((error) =>
+          console.error(`❌ Failed to analyze business:`, error)
+        )
+    );
+  }
+
+  // Risk section
+  if (sectionsData.risk?.text && sectionsData.risk.text.length > 500) {
+    analysisPromises.push(
+      analyzeRiskSection(sectionsData.risk.text.substring(0, 25000), openai)
+        .then((result) => {
+          if (result) analysis.sections.risks = result;
+          console.log(`✅ risks analyzed`);
+        })
+        .catch((error) => console.error(`❌ Failed to analyze risks:`, error))
+    );
+  }
+
+  // Legal section
+  if (sectionsData.legal?.text && sectionsData.legal.text.length > 300) {
+    analysisPromises.push(
+      analyzeLegalSection(sectionsData.legal.text.substring(0, 15000), openai)
+        .then((result) => {
+          if (result) analysis.sections.legal = result;
+          console.log(`✅ legal analyzed`);
+        })
+        .catch((error) => console.error(`❌ Failed to analyze legal:`, error))
+    );
+  }
+
+  // MD&A section
+  if (sectionsData.mdna?.text && sectionsData.mdna.text.length > 500) {
+    analysisPromises.push(
+      analyzeMdnaSection(sectionsData.mdna.text.substring(0, 20000), openai)
+        .then((result) => {
+          if (result) analysis.sections.mdna = result;
+          console.log(`✅ mdna analyzed`);
+        })
+        .catch((error) => console.error(`❌ Failed to analyze mdna:`, error))
+    );
+  }
+
+  // Market Risk section
+  if (
+    sectionsData.marketRisk?.text &&
+    sectionsData.marketRisk.text.length > 300
+  ) {
+    analysisPromises.push(
+      analyzeMarketRiskSection(
+        sectionsData.marketRisk.text.substring(0, 15000),
+        openai
+      )
+        .then((result) => {
+          if (result) analysis.sections.marketRisk = result;
+          console.log(`✅ marketRisk analyzed`);
+        })
+        .catch((error) =>
+          console.error(`❌ Failed to analyze marketRisk:`, error)
+        )
+    );
+  }
+
+  // Financials section
+  if (
+    sectionsData.financials?.text &&
+    sectionsData.financials.text.length > 500
+  ) {
+    analysisPromises.push(
+      analyzeFinancialsSection(
+        sectionsData.financials.text.substring(0, 20000),
+        openai
+      )
+        .then((result) => {
+          if (result) analysis.sections.financials = result;
+          console.log(`✅ financials analyzed`);
+        })
+        .catch((error) =>
+          console.error(`❌ Failed to analyze financials:`, error)
+        )
+    );
+  }
+
+  // Controls section
+  if (sectionsData.controls?.text && sectionsData.controls.text.length > 300) {
+    analysisPromises.push(
+      analyzeControlsSection(
+        sectionsData.controls.text.substring(0, 15000),
+        openai
+      )
+        .then((result) => {
+          if (result) analysis.sections.controls = result;
+          console.log(`✅ controls analyzed`);
+        })
+        .catch((error) =>
+          console.error(`❌ Failed to analyze controls:`, error)
+        )
+    );
+  }
+
+  // Directors section
+  if (
+    sectionsData.directors?.text &&
+    sectionsData.directors.text.length > 300
+  ) {
+    analysisPromises.push(
+      analyzeDirectorsSection(
+        sectionsData.directors.text.substring(0, 15000),
+        openai
+      )
+        .then((result) => {
+          if (result) analysis.sections.directors = result;
+          console.log(`✅ directors analyzed`);
+        })
+        .catch((error) =>
+          console.error(`❌ Failed to analyze directors:`, error)
+        )
+    );
+  }
+
+  // Compensation section
+  if (
+    sectionsData.compensation?.text &&
+    sectionsData.compensation.text.length > 300
+  ) {
+    analysisPromises.push(
+      analyzeCompensationSection(
+        sectionsData.compensation.text.substring(0, 20000),
+        openai
+      )
+        .then((result) => {
+          if (result) analysis.sections.compensation = result;
+          console.log(`✅ compensation analyzed`);
+        })
+        .catch((error) =>
+          console.error(`❌ Failed to analyze compensation:`, error)
+        )
+    );
+  }
+
+  // Ownership section
+  if (
+    sectionsData.ownership?.text &&
+    sectionsData.ownership.text.length > 300
+  ) {
+    analysisPromises.push(
+      analyzeOwnershipSection(
+        sectionsData.ownership.text.substring(0, 15000),
+        openai
+      )
+        .then((result) => {
+          if (result) analysis.sections.ownership = result;
+          console.log(`✅ ownership analyzed`);
+        })
+        .catch((error) =>
+          console.error(`❌ Failed to analyze ownership:`, error)
+        )
+    );
+  }
+
+  // Related Party section
+  if (
+    sectionsData.relatedParty?.text &&
+    sectionsData.relatedParty.text.length > 300
+  ) {
+    analysisPromises.push(
+      analyzeRelatedPartySection(
+        sectionsData.relatedParty.text.substring(0, 15000),
+        openai
+      )
+        .then((result) => {
+          if (result) analysis.sections.relatedParty = result;
+          console.log(`✅ relatedParty analyzed`);
+        })
+        .catch((error) =>
+          console.error(`❌ Failed to analyze relatedParty:`, error)
+        )
+    );
+  }
+
+  // Wait for all analyses to complete
+  console.log(
+    `🤖 Running ${analysisPromises.length} AI analyses in parallel...`
+  );
+  await Promise.all(analysisPromises);
+
+  return analysis;
+}
+
+// Helper functions for each section analysis
+async function analyzeBusinessSection(text: string, openai: OpenAI) {
+  const prompt = `Analyze this Business section:
 1. What does the company do? (specific products/services)
 2. Key products by name
 3. Geographic markets
 4. Competitive position
 
-Text (first 20000 chars):
-${sectionsData.business.text.substring(0, 20000)}
+Text: ${text}
 
 Return JSON:
 {
@@ -102,25 +335,19 @@ Return JSON:
   "competitivePosition": "statement"
 }`;
 
-    const result = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
-      messages: [{ role: "user", content: prompt }],
-      response_format: { type: "json_object" },
-      temperature: 0.1,
-    });
+  const result = await openai.chat.completions.create({
+    model: "gpt-4o-mini",
+    messages: [{ role: "user", content: prompt }],
+    response_format: { type: "json_object" },
+    temperature: 0.1,
+  });
 
-    analysis.sections.business = JSON.parse(
-      result.choices[0].message.content || "{}"
-    );
-  }
+  return JSON.parse(result.choices[0].message.content || "{}");
+}
 
-  // Item 1A: Risk Factors
-  if (sectionsData.risk?.text && sectionsData.risk.text.length > 500) {
-    console.log("🤖 Analyzing Risk Factors...");
-    const prompt = `Extract 5-8 specific risks:
-
-Text (first 25000 chars):
-${sectionsData.risk.text.substring(0, 25000)}
+async function analyzeRiskSection(text: string, openai: OpenAI) {
+  const prompt = `Extract 5-8 specific risks:
+Text: ${text}
 
 Return JSON:
 {
@@ -134,32 +361,23 @@ Return JSON:
   ]
 }`;
 
-    const result = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
-      messages: [{ role: "user", content: prompt }],
-      response_format: { type: "json_object" },
-      temperature: 0.1,
-    });
+  const result = await openai.chat.completions.create({
+    model: "gpt-4o-mini",
+    messages: [{ role: "user", content: prompt }],
+    response_format: { type: "json_object" },
+    temperature: 0.1,
+  });
 
-    const data = JSON.parse(result.choices[0].message.content || "{}");
-    analysis.sections.risks = (data.risks || []).map((r: any, i: number) => ({
-      id: `risk-${i}`,
-      ...r,
-    }));
-  }
+  const data = JSON.parse(result.choices[0].message.content || "{}");
+  return (data.risks || []).map((r: any, i: number) => ({
+    id: `risk-${i}`,
+    ...r,
+  }));
+}
 
-  // Item 3: Legal Proceedings
-  if (sectionsData.legal?.text && sectionsData.legal.text.length > 300) {
-    console.log("🤖 Analyzing Legal Proceedings...");
-    const prompt = `Analyze legal proceedings:
-
-Questions:
-- Any material litigation?
-- Potential financial impact?
-- Red flags?
-
-Text (first 15000 chars):
-${sectionsData.legal.text.substring(0, 15000)}
+async function analyzeLegalSection(text: string, openai: OpenAI) {
+  const prompt = `Analyze legal proceedings:
+Text: ${text}
 
 Return JSON:
 {
@@ -168,25 +386,19 @@ Return JSON:
   "potentialImpact": "financial impact assessment"
 }`;
 
-    const result = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
-      messages: [{ role: "user", content: prompt }],
-      response_format: { type: "json_object" },
-      temperature: 0.1,
-    });
+  const result = await openai.chat.completions.create({
+    model: "gpt-4o-mini",
+    messages: [{ role: "user", content: prompt }],
+    response_format: { type: "json_object" },
+    temperature: 0.1,
+  });
 
-    analysis.sections.legal = JSON.parse(
-      result.choices[0].message.content || "{}"
-    );
-  }
+  return JSON.parse(result.choices[0].message.content || "{}");
+}
 
-  // Item 7: MD&A
-  if (sectionsData.mdna?.text && sectionsData.mdna.text.length > 500) {
-    console.log("🤖 Analyzing MD&A...");
-    const prompt = `Extract key information:
-
-Text (first 20000 chars):
-${sectionsData.mdna.text.substring(0, 20000)}
+async function analyzeMdnaSection(text: string, openai: OpenAI) {
+  const prompt = `Extract key information:
+Text: ${text}
 
 Return JSON:
 {
@@ -196,34 +408,19 @@ Return JSON:
   "liquidity": "liquidity info"
 }`;
 
-    const result = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
-      messages: [{ role: "user", content: prompt }],
-      response_format: { type: "json_object" },
-      temperature: 0.1,
-    });
+  const result = await openai.chat.completions.create({
+    model: "gpt-4o-mini",
+    messages: [{ role: "user", content: prompt }],
+    response_format: { type: "json_object" },
+    temperature: 0.1,
+  });
 
-    analysis.sections.mdna = JSON.parse(
-      result.choices[0].message.content || "{}"
-    );
-  }
+  return JSON.parse(result.choices[0].message.content || "{}");
+}
 
-  // Item 7A: Market Risk
-  if (
-    sectionsData.marketRisk?.text &&
-    sectionsData.marketRisk.text.length > 300
-  ) {
-    console.log("🤖 Analyzing Market Risk...");
-    const prompt = `Analyze market risk exposures:
-
-Questions:
-- Currency risk?
-- Interest rate risk?
-- Commodity price risk?
-- Hedging strategies?
-
-Text (first 15000 chars):
-${sectionsData.marketRisk.text.substring(0, 15000)}
+async function analyzeMarketRiskSection(text: string, openai: OpenAI) {
+  const prompt = `Analyze market risk exposures:
+Text: ${text}
 
 Return JSON:
 {
@@ -233,68 +430,42 @@ Return JSON:
   "hedgingStrategy": "description"
 }`;
 
-    const result = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
-      messages: [{ role: "user", content: prompt }],
-      response_format: { type: "json_object" },
-      temperature: 0.1,
-    });
+  const result = await openai.chat.completions.create({
+    model: "gpt-4o-mini",
+    messages: [{ role: "user", content: prompt }],
+    response_format: { type: "json_object" },
+    temperature: 0.1,
+  });
 
-    analysis.sections.marketRisk = JSON.parse(
-      result.choices[0].message.content || "{}"
-    );
-  }
+  return JSON.parse(result.choices[0].message.content || "{}");
+}
 
-  // Item 8: Financials
-  if (
-    sectionsData.financials?.text &&
-    sectionsData.financials.text.length > 500
-  ) {
-    console.log("🤖 Analyzing Financials...");
-    const prompt = `Extract financial metrics and any unusual items:
-
-Questions:
-- Key metrics (revenue, net income, EPS)?
-- Any unusual items in footnotes?
-- Going concern issues?
-- Significant accounting changes?
-
-Text (first 20000 chars):
-${sectionsData.financials.text.substring(0, 20000)}
+async function analyzeFinancialsSection(text: string, openai: OpenAI) {
+  const prompt = `Extract financial metrics:
+Text: ${text}
 
 Return JSON:
 {
   "revenue": {"value": "$X", "change": "Y%", "period": "FY20XX"},
   "netIncome": {"value": "$X", "change": "Y%", "period": "FY20XX"},
   "eps": {"value": "$X", "change": "Y%", "period": "FY20XX"},
-  "unusualItems": ["any red flags in footnotes"],
+  "unusualItems": ["any red flags"],
   "accountingChanges": "description or N/A"
 }`;
 
-    const result = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
-      messages: [{ role: "user", content: prompt }],
-      response_format: { type: "json_object" },
-      temperature: 0.1,
-    });
+  const result = await openai.chat.completions.create({
+    model: "gpt-4o-mini",
+    messages: [{ role: "user", content: prompt }],
+    response_format: { type: "json_object" },
+    temperature: 0.1,
+  });
 
-    analysis.sections.financials = JSON.parse(
-      result.choices[0].message.content || "{}"
-    );
-  }
+  return JSON.parse(result.choices[0].message.content || "{}");
+}
 
-  // Item 9A: Controls and Procedures
-  if (sectionsData.controls?.text && sectionsData.controls.text.length > 300) {
-    console.log("🤖 Analyzing Controls...");
-    const prompt = `Analyze internal controls:
-
-Questions:
-- Any material weaknesses?
-- Control deficiencies?
-- Remediation plans?
-
-Text (first 15000 chars):
-${sectionsData.controls.text.substring(0, 15000)}
+async function analyzeControlsSection(text: string, openai: OpenAI) {
+  const prompt = `Analyze internal controls:
+Text: ${text}
 
 Return JSON:
 {
@@ -303,33 +474,19 @@ Return JSON:
   "assessment": "management conclusion"
 }`;
 
-    const result = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
-      messages: [{ role: "user", content: prompt }],
-      response_format: { type: "json_object" },
-      temperature: 0.1,
-    });
+  const result = await openai.chat.completions.create({
+    model: "gpt-4o-mini",
+    messages: [{ role: "user", content: prompt }],
+    response_format: { type: "json_object" },
+    temperature: 0.1,
+  });
 
-    analysis.sections.controls = JSON.parse(
-      result.choices[0].message.content || "{}"
-    );
-  }
+  return JSON.parse(result.choices[0].message.content || "{}");
+}
 
-  // Item 10: Directors and Officers
-  if (
-    sectionsData.directors?.text &&
-    sectionsData.directors.text.length > 300
-  ) {
-    console.log("🤖 Analyzing Directors...");
-    const prompt = `Analyze board composition:
-
-Questions:
-- Key executives and their backgrounds?
-- Board independence?
-- Any concerns?
-
-Text (first 15000 chars):
-${sectionsData.directors.text.substring(0, 15000)}
+async function analyzeDirectorsSection(text: string, openai: OpenAI) {
+  const prompt = `Analyze board composition:
+Text: ${text}
 
 Return JSON:
 {
@@ -338,34 +495,19 @@ Return JSON:
   "boardIndependence": "assessment"
 }`;
 
-    const result = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
-      messages: [{ role: "user", content: prompt }],
-      response_format: { type: "json_object" },
-      temperature: 0.1,
-    });
+  const result = await openai.chat.completions.create({
+    model: "gpt-4o-mini",
+    messages: [{ role: "user", content: prompt }],
+    response_format: { type: "json_object" },
+    temperature: 0.1,
+  });
 
-    analysis.sections.directors = JSON.parse(
-      result.choices[0].message.content || "{}"
-    );
-  }
+  return JSON.parse(result.choices[0].message.content || "{}");
+}
 
-  // Item 11: Executive Compensation
-  if (
-    sectionsData.compensation?.text &&
-    sectionsData.compensation.text.length > 300
-  ) {
-    console.log("🤖 Analyzing Compensation...");
-    const prompt = `Analyze executive compensation:
-
-Questions:
-- How much do CEO and top executives earn?
-- Performance-based vs guaranteed?
-- Any red flags (excessive pay, golden parachutes)?
-- Pay ratio to median employee?
-
-Text (first 20000 chars):
-${sectionsData.compensation.text.substring(0, 20000)}
+async function analyzeCompensationSection(text: string, openai: OpenAI) {
+  const prompt = `Analyze executive compensation:
+Text: ${text}
 
 Return JSON:
 {
@@ -376,33 +518,19 @@ Return JSON:
   "redFlags": ["concerns or 'None identified'"]
 }`;
 
-    const result = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
-      messages: [{ role: "user", content: prompt }],
-      response_format: { type: "json_object" },
-      temperature: 0.1,
-    });
+  const result = await openai.chat.completions.create({
+    model: "gpt-4o-mini",
+    messages: [{ role: "user", content: prompt }],
+    response_format: { type: "json_object" },
+    temperature: 0.1,
+  });
 
-    analysis.sections.compensation = JSON.parse(
-      result.choices[0].message.content || "{}"
-    );
-  }
+  return JSON.parse(result.choices[0].message.content || "{}");
+}
 
-  // Item 12: Security Ownership
-  if (
-    sectionsData.ownership?.text &&
-    sectionsData.ownership.text.length > 300
-  ) {
-    console.log("🤖 Analyzing Ownership...");
-    const prompt = `Analyze ownership structure:
-
-Questions:
-- Major shareholders?
-- Insider ownership percentage?
-- Any concentrated ownership?
-
-Text (first 15000 chars):
-${sectionsData.ownership.text.substring(0, 15000)}
+async function analyzeOwnershipSection(text: string, openai: OpenAI) {
+  const prompt = `Analyze ownership structure:
+Text: ${text}
 
 Return JSON:
 {
@@ -411,33 +539,19 @@ Return JSON:
   "insiderOwnership": "percentage"
 }`;
 
-    const result = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
-      messages: [{ role: "user", content: prompt }],
-      response_format: { type: "json_object" },
-      temperature: 0.1,
-    });
+  const result = await openai.chat.completions.create({
+    model: "gpt-4o-mini",
+    messages: [{ role: "user", content: prompt }],
+    response_format: { type: "json_object" },
+    temperature: 0.1,
+  });
 
-    analysis.sections.ownership = JSON.parse(
-      result.choices[0].message.content || "{}"
-    );
-  }
+  return JSON.parse(result.choices[0].message.content || "{}");
+}
 
-  // Item 13: Related Party Transactions
-  if (
-    sectionsData.relatedParty?.text &&
-    sectionsData.relatedParty.text.length > 300
-  ) {
-    console.log("🤖 Analyzing Related Party Transactions...");
-    const prompt = `Analyze related party transactions:
-
-Questions:
-- Any related party transactions?
-- Potential conflicts of interest?
-- Are they at arm's length?
-
-Text (first 15000 chars):
-${sectionsData.relatedParty.text.substring(0, 15000)}
+async function analyzeRelatedPartySection(text: string, openai: OpenAI) {
+  const prompt = `Analyze related party transactions:
+Text: ${text}
 
 Return JSON:
 {
@@ -446,17 +560,12 @@ Return JSON:
   "concerns": ["red flags or 'None identified'"]
 }`;
 
-    const result = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
-      messages: [{ role: "user", content: prompt }],
-      response_format: { type: "json_object" },
-      temperature: 0.1,
-    });
+  const result = await openai.chat.completions.create({
+    model: "gpt-4o-mini",
+    messages: [{ role: "user", content: prompt }],
+    response_format: { type: "json_object" },
+    temperature: 0.1,
+  });
 
-    analysis.sections.relatedParty = JSON.parse(
-      result.choices[0].message.content || "{}"
-    );
-  }
-
-  return analysis;
+  return JSON.parse(result.choices[0].message.content || "{}");
 }
