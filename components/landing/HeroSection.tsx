@@ -16,6 +16,7 @@ interface InsightCardProps {
   bgColor: string;
   textColor: string;
 }
+//degistirildi
 
 const InsightCard: React.FC<InsightCardProps> = ({
   type,
@@ -66,7 +67,7 @@ const HeroSection: React.FC = () => {
               citations.
             </h3>
             <div className="flex flex-col items-start gap-3">
-              <Link href="/insights" passHref legacyBehavior>
+              <Link href="/sec-analyzer" passHref legacyBehavior>
                 <button className="h-11 rounded-full bg-[#0C213A] px-7 text-sm font-medium text-white shadow-lg hover:bg-[#0A1A2E] transition-all hover:shadow-xl cursor-pointer">
                   Start Free Trial
                 </button>

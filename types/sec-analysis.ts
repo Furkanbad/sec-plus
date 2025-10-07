@@ -1,85 +1,109 @@
 // types/sec-analysis.ts
+export interface SECSearchRequest {
+  ticker: string;
+  filingType: string;
+  year?: string;
+}
 
 export interface SECFiling {
   cik: string;
   ticker: string;
   companyName: string;
-  filingType: "10-K" | "10-Q" | "8-K";
+  filingType: string;
   filingDate: string;
   fiscalYear: string;
   htmlUrl: string;
 }
 
-export interface BusinessSection {
-  summary: string;
-  keyProducts: string[];
-  markets: string[];
-  competitivePosition: string;
-  employees?: string;
-  highlights: SectionHighlight[];
-}
-
-export interface RiskItem {
-  id: string;
-  category: "operational" | "financial" | "regulatory" | "market" | "strategic";
-  title: string;
-  description: string;
-  severity: "high" | "medium" | "low";
-  highlights: SectionHighlight[];
-}
-
-export interface MDNASection {
-  executiveSummary: string;
-  keyTrends: string[];
-  futureOutlook: string;
-  liquidity: string;
-  criticalAccounting: string;
-  highlights: SectionHighlight[];
-}
-
 export interface FinancialMetric {
-  name: string;
+  name?: string;
   value: string;
   change: string;
-  analysis: string;
+  analysis?: string;
   period: string;
 }
 
-export interface FinancialSection {
-  revenue: FinancialMetric;
-  netIncome: FinancialMetric;
-  eps: FinancialMetric;
-  keyRatios: FinancialMetric[];
-  highlights: SectionHighlight[];
-}
-
-export interface SectionHighlight {
+export interface RiskFactor {
   id: string;
-  text: string;
-  startOffset: number;
-  endOffset: number;
-  insightId: string;
-  color: string;
+  category:
+    | "operational"
+    | "financial"
+    | "regulatory"
+    | "market"
+    | "strategic"
+    | string;
+  title: string;
+  description: string;
+  severity: "high" | "medium" | "low" | string;
+  highlights?: string[];
 }
 
 export interface SECAnalysis {
   filing: SECFiling;
   sections: {
-    business: BusinessSection;
-    risks: RiskItem[];
-    mdna: MDNASection;
-    financials: FinancialSection;
+    business?: {
+      summary: string;
+      keyProducts: string[];
+      markets: string[];
+      competitivePosition: string;
+      highlights?: string[];
+    };
+    risks?: RiskFactor[];
+    legal?: {
+      summary: string;
+      materialCases?: string[];
+      potentialImpact?: string;
+    };
+    mdna?: {
+      executiveSummary: string;
+      keyTrends: string[];
+      futureOutlook: string;
+      liquidity: string;
+      criticalAccounting?: string;
+      highlights?: string[];
+    };
+    marketRisk?: {
+      summary: string;
+      currencyRisk?: string;
+      interestRateRisk?: string;
+      hedgingStrategy?: string;
+    };
+    financials?: {
+      revenue: FinancialMetric;
+      netIncome: FinancialMetric;
+      eps: FinancialMetric;
+      unusualItems?: string[];
+      accountingChanges?: string;
+      keyRatios?: { name: string; value: string; analysis: string }[];
+      highlights?: string[];
+    };
+    controls?: {
+      summary: string;
+      materialWeaknesses?: string[];
+      assessment?: string;
+    };
+    directors?: {
+      summary: string;
+      keyExecutives?: string[];
+      boardIndependence?: string;
+    };
+    compensation?: {
+      summary: string;
+      ceoTotalComp?: string;
+      topExecutives?: string[];
+      performanceBased?: string;
+      redFlags?: string[];
+    };
+    ownership?: {
+      summary: string;
+      majorShareholders?: string[];
+      insiderOwnership?: string;
+    };
+    relatedParty?: {
+      summary: string;
+      transactions?: string[];
+      concerns?: string[];
+    };
   };
   generatedAt: string;
-  htmlReport?: string;
-}
-
-export interface SECSearchRequest {
-  ticker: string;
-  filingType: "10-K" | "10-Q" | "8-K";
-  year?: string;
-}
-
-export interface SECSearchResponse {
-  filings: SECFiling[];
 }

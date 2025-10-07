@@ -1,7 +1,8 @@
 "use client";
 
-import React, { useState } from "react";
+import React from "react"; // useState artık kullanılmadığı için kaldırıldı
 import { CheckIcon } from "./icons";
+import Link from "next/link";
 
 interface PricingCardProps {
   planType: string;
@@ -12,13 +13,14 @@ interface PricingCardProps {
   features: string[];
   ctaText: string;
   isPopular?: boolean;
-  highlightColor?: string; // Tailwind color class suffix, e.g., "gray-200"
-  ctaBg?: string; // Tailwind background class, e.g., "bg-white"
-  ctaTextClass?: string; // Tailwind text color class, e.g., "text-gray-700"
-  ctaHoverBg?: string; // Tailwind hover background class, e.g., "hover:bg-gray-50"
-  priceColor?: string; // Tailwind text color class, e.g., "text-gray-900"
-  planTypeBg?: string; // Tailwind background class for planType badge
-  planTypeTextColor?: string; // Tailwind text color class for planType badge
+  highlightColor?: string;
+  ctaBg?: string;
+  ctaTextClass?: string;
+  ctaHoverBg?: string;
+  priceColor?: string;
+  planTypeBg?: string;
+  planTypeTextColor?: string;
+  ctaHref?: string;
 }
 
 const PricingCard: React.FC<PricingCardProps> = ({
@@ -35,9 +37,22 @@ const PricingCard: React.FC<PricingCardProps> = ({
   ctaTextClass = "text-gray-700",
   ctaHoverBg = "hover:bg-gray-50",
   priceColor = "text-gray-900",
-  planTypeBg = "bg-gray-100", // Default value
-  planTypeTextColor = "text-gray-700", // Default value
+  planTypeBg = "bg-gray-100",
+  planTypeTextColor = "text-gray-700",
+  ctaHref = "#",
 }) => {
+  const buttonContent = (
+    <button
+      className={`w-full rounded-full ${
+        isPopular
+          ? "bg-[#0C213A] text-white hover:bg-[#0A1A2E] shadow-md"
+          : `${ctaBg} border-2 border-${highlightColor} ${ctaTextClass} ${ctaHoverBg}`
+      } py-3 text-base font-semibold transition-all`}
+    >
+      {ctaText}
+    </button>
+  );
+
   return (
     <div
       className={`relative rounded-2xl border-2 ${
@@ -90,25 +105,22 @@ const PricingCard: React.FC<PricingCardProps> = ({
         ))}
       </div>
 
-      <button
-        className={`w-full rounded-full ${
-          isPopular
-            ? "bg-[#0C213A] text-white hover:bg-[#0A1A2E] shadow-md"
-            : `${ctaBg} border-2 border-${highlightColor} ${ctaTextClass} ${ctaHoverBg}`
-        } py-3 text-base font-semibold transition-all`}
-      >
-        {ctaText}
-      </button>
+      {ctaHref !== "#" ? (
+        <Link href={ctaHref} passHref legacyBehavior>
+          {buttonContent}
+        </Link>
+      ) : (
+        buttonContent
+      )}
     </div>
   );
 };
 
 const PricingSection: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<"individual" | "commercial">(
-    "individual"
-  );
+  // useState ve activeTab kaldırıldı
 
-  const individualPlans: PricingCardProps[] = [
+  // Tüm planları tek bir dizide birleştirelim
+  const allPlans: PricingCardProps[] = [
     {
       planType: "Free",
       title: "Starter",
@@ -125,31 +137,34 @@ const PricingSection: React.FC = () => {
       highlightColor: "gray-300",
       planTypeBg: "bg-gray-100",
       planTypeTextColor: "text-gray-700",
+      ctaHref: "/sec-analyzer",
     },
     {
       planType: "Pro",
       title: "Professional",
       description: "For serious investors and analysts.",
-      price: "$49",
+      price: "$9",
       pricePer: "/month",
       features: [
-        "50 PDFs per month",
+        "20 PDFs per month",
         "Advanced AI analysis",
         "Comparative insights",
         "Priority processing",
         "Export & share reports",
         "Email support",
       ],
-      ctaText: "Start Free Trial",
+      ctaText: "Choose Pro",
       isPopular: true,
       planTypeBg: "bg-blue-100",
       planTypeTextColor: "text-[#0C213A]",
+      ctaHref: "/signup?plan=pro",
     },
     {
-      planType: "Enterprise",
-      title: "Enterprise",
-      description: "For teams and institutions.",
-      price: "Custom",
+      planType: "Teams",
+      title: "Teams",
+      description: "Unlimited power for your team.",
+      price: "$29",
+      pricePer: "/month",
       features: [
         "Unlimited PDFs",
         "Multi-user accounts",
@@ -158,50 +173,11 @@ const PricingSection: React.FC = () => {
         "Dedicated support",
         "Training & onboarding",
       ],
-      ctaText: "Contact Sales",
-      highlightColor: "gray-300",
-      planTypeBg: "bg-blue-100",
-      planTypeTextColor: "text-blue-700",
-    },
-  ];
-
-  // Placeholder for commercial plans. You can fill this array with actual data
-  const commercialPlans: PricingCardProps[] = [
-    {
-      planType: "Team Basic",
-      title: "Small Teams",
-      description: "For growing teams needing collaborative features.",
-      price: "$99",
-      pricePer: "/month",
-      features: [
-        "100 PDFs per month",
-        "5 User Accounts",
-        "Shared Workspaces",
-        "Advanced AI analysis",
-        "Dedicated Email Support",
-      ],
-      ctaText: "Start Team Trial",
-      highlightColor: "blue-300",
-      planTypeBg: "bg-purple-100",
-      planTypeTextColor: "text-purple-700",
-    },
-    {
-      planType: "Corporate",
-      title: "Corporate",
-      description: "Comprehensive solutions for large organizations.",
-      price: "Custom",
-      features: [
-        "Unlimited PDFs",
-        "Unlimited User Accounts",
-        "Full API access",
-        "Advanced Security Features",
-        "Dedicated Account Manager",
-        "On-site Training",
-      ],
-      ctaText: "Contact Sales",
+      ctaText: "Choose Teams",
       highlightColor: "blue-500",
       planTypeBg: "bg-indigo-100",
       planTypeTextColor: "text-indigo-700",
+      ctaHref: "/signup?plan=teams",
     },
   ];
 
@@ -218,49 +194,13 @@ const PricingSection: React.FC = () => {
           </p>
         </div>
 
-        {/* Tabs */}
-        <div className="mb-12 flex justify-center">
-          <div className="inline-flex rounded-lg bg-white p-1 shadow-md">
-            <button
-              onClick={() => setActiveTab("individual")}
-              className={`rounded-lg px-8 py-3 text-base font-semibold transition-all ${
-                activeTab === "individual"
-                  ? "bg-[#0C213A] text-white shadow-md"
-                  : "text-gray-600 hover:text-gray-900"
-              }`}
-            >
-              Individual
-            </button>
-            <button
-              onClick={() => setActiveTab("commercial")}
-              className={`rounded-lg px-8 py-3 text-base font-semibold transition-all ${
-                activeTab === "commercial"
-                  ? "bg-[#0C213A] text-white shadow-md"
-                  : "text-gray-600 hover:text-gray-900"
-              }`}
-            >
-              Teams
-            </button>
-          </div>
-        </div>
+        {/* Tabs kaldırıldı */}
 
-        {/* Pricing Cards */}
+        {/* Pricing Cards - Tüm planlar şimdi aynı bölümde */}
         <div className="grid gap-8 md:grid-cols-3 max-w-6xl mx-auto">
-          {activeTab === "individual" &&
-            individualPlans.map((plan, index) => (
-              <PricingCard key={index} {...plan} />
-            ))}
-          {activeTab === "commercial" &&
-            commercialPlans.map((plan, index) => (
-              <PricingCard key={index} {...plan} />
-            ))}
-          {/* If there are no commercial plans, you might render a message or a single contact card */}
-          {activeTab === "commercial" && commercialPlans.length === 0 && (
-            <div className="md:col-span-3 text-center text-gray-500 py-10">
-              No commercial plans defined yet. Please contact sales for team
-              solutions.
-            </div>
-          )}
+          {allPlans.map((plan, index) => (
+            <PricingCard key={index} {...plan} />
+          ))}
         </div>
       </div>
     </section>

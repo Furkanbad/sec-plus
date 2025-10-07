@@ -5,7 +5,7 @@ import Link from "next/link";
 
 const Header: React.FC = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-
+  //degistirildi
   return (
     <nav className="sticky top-0 z-50 border-b bg-white">
       <div className="container mx-auto max-w-screen-2xl px-6">
@@ -50,7 +50,7 @@ const Header: React.FC = () => {
 
           {/* CTA Button (Desktop) */}
           <div className="hidden md:block">
-            <Link href="/insights" passHref legacyBehavior>
+            <Link href="/sec-analyzer" passHref legacyBehavior>
               <button className="rounded-md bg-[#0C213A] px-6 py-2.5 text-sm font-medium text-white hover:bg-[#0A1A2E] transition shadow-md cursor-pointer">
                 {" "}
                 {/* rounded-full -> rounded-md olarak değiştirildi */}

@@ -1,4 +1,5 @@
 import React from "react";
+import Link from "next/link"; // Link bileşenini import ediyoruz
 
 const CTASection: React.FC = () => {
   return (
@@ -10,9 +11,12 @@ const CTASection: React.FC = () => {
         <p className="mb-10 text-xl text-blue-100">
           Join investors who trust AI-powered insights with verified sources
         </p>
-        <button className="h-14 rounded-full bg-white px-10 text-lg font-semibold text-[#0C213A] shadow-xl hover:bg-gray-50 transition-all">
-          Try Free Now
-        </button>
+        {/* 'Try Free Now' butonunu Link bileşenine dönüştürdük */}
+        <Link href="/sec-analyzer" passHref legacyBehavior>
+          <button className="h-14 rounded-full bg-white px-10 text-lg font-semibold text-[#0C213A] shadow-xl hover:bg-gray-50 transition-all cursor-pointer">
+            Try Free Now
+          </button>
+        </Link>
         <p className="mt-6 text-sm text-blue-100">
           3 PDFs free • No credit card • Takes 30 seconds
         </p>
