@@ -1,4 +1,5 @@
 // types/sec-analysis.ts
+
 export interface SECSearchRequest {
   ticker: string;
   filingType: string;
@@ -15,67 +16,151 @@ export interface SECFiling {
   htmlUrl: string;
 }
 
-export interface FinancialMetric {
-  name?: string;
+// Yeni FinancialMetric tanımı (Eğer profit analysis için ayrı bir tanım gerekirse)
+export interface ProfitMetric {
   value: string;
-  change: string;
-  analysis?: string;
   period: string;
 }
 
+export interface DetailedFinancialValue {
+  currentYear: ProfitMetric;
+  previousYear: ProfitMetric;
+  changeAbsolute: string;
+  changePercentage: string;
+  // Diğer açıklamalar
+  drivers?: string;
+  factors?: string;
+  efficiencyComment?: string;
+  contributors?: string;
+}
+
+export interface ProfitMargin {
+  currentYear: string; // "X%" formatında
+  previousYear: string; // "Y%" formatında
+}
+
+export interface NoteworthyItem {
+  description: string;
+  type: "unusual_item" | "adjustment" | "footnote" | string;
+}
+
 export interface RiskFactor {
-  id: string;
+  id: string; // frontend'de listeler için benzersiz ID
   category:
     | "operational"
     | "financial"
     | "regulatory"
     | "market"
     | "strategic"
-    | string;
+    | "cybersecurity"
+    | "environmental"
+    | "other"; // Genişletilmiş kategori
   title: string;
   description: string;
-  severity: "high" | "medium" | "low" | string;
-  highlights?: string[];
+  potentialImpact: string; // Yeni eklendi
+  mitigationStrategies: string | string[]; // Yeni eklendi, metin veya dizi olabilir
+  severity: "high" | "medium" | "low";
+  originalExcerpt: string; // Yeni ve zorunlu eklendi
 }
 
+export interface LegalCase {
+  caseTitle: string;
+  natureOfClaim: string;
+  currentStatus: string;
+  companyPosition: string;
+  potentialFinancialImpact: {
+    estimatedLossRange: string;
+    reservesSetAside: string;
+    impactDescription: string;
+    insuranceCoverage: string; // "Yes|No|Not specified"
+  };
+  keyDates: string[];
+}
+
+export interface TrendUncertaintyOpportunity {
+  itemDescription: string;
+  impactBenefit: string;
+}
+
+export interface CriticalAccountingPolicy {
+  policyName: string;
+  explanation: string;
+}
+
+export interface MarketRiskDetail {
+  exposure: string;
+  potentialImpact: string;
+  mitigationStrategies: string[]; // Artık string dizisi
+}
+
+// ANA SECAnalysis Arayüzü
 export interface SECAnalysis {
   filing: SECFiling;
   sections: {
     business?: {
       summary: string;
-      keyProducts: string[];
+      keyProducts: { name: string; marketPosition: string }[]; // Güncellendi
       markets: string[];
-      competitivePosition: string;
-      highlights?: string[];
+      competitiveAdvantages: string[]; // Yeni eklendi
+      growthStrategiesOpportunities: string[]; // Yeni eklendi
     };
-    risks?: RiskFactor[];
+    risks?: RiskFactor[]; // RiskFactor arayüzü güncellendi
     legal?: {
-      summary: string;
-      materialCases?: string[];
-      potentialImpact?: string;
+      title: string; // Yeni eklendi
+      overallLegalSummary: string; // Yeni eklendi
+      materialCases?: LegalCase[]; // LegalCase arayüzü eklendi
+      regulatoryInquiries?: string; // Yeni eklendi
+      environmentalLitigation?: string; // Yeni eklendi
+      overallRiskAssessment?: string; // Yeni eklendi
     };
     mdna?: {
+      title: string; // Yeni eklendi
       executiveSummary: string;
-      keyTrends: string[];
-      futureOutlook: string;
-      liquidity: string;
-      criticalAccounting?: string;
-      highlights?: string[];
+      resultsOfOperations: {
+        // Yeni alt obje
+        revenueAnalysis: string;
+        costOfSalesAnalysis: string;
+        operatingExpensesAnalysis: string;
+        otherIncomeExpense: string;
+      };
+      liquidityAndCapitalResources: {
+        // Yeni alt obje
+        currentLiquidity: string;
+        capitalResources: string;
+        cashFlowAnalysis: string;
+        futureCapitalNeeds: string;
+      };
+      criticalAccountingPolicies: CriticalAccountingPolicy[]; // Yeni eklendi
+      offBalanceSheetArrangements: string; // Yeni eklendi
+      knownTrendsUncertaintiesOpportunities: TrendUncertaintyOpportunity[]; // Güncellendi
+      strategicOutlookAndFuturePlans: string; // Güncellendi
     };
     marketRisk?: {
-      summary: string;
-      currencyRisk?: string;
-      interestRateRisk?: string;
-      hedgingStrategy?: string;
+      title: string; // Yeni eklendi
+      overallSummary: string; // Yeni eklendi
+      interestRateRisk: MarketRiskDetail; // MarketRiskDetail arayüzü kullanıldı
+      currencyRisk: MarketRiskDetail;
+      commodityPriceRisk: MarketRiskDetail; // Yeni eklendi
+      equityPriceRisk: MarketRiskDetail; // Yeni eklendi
+      overallHedgingStrategy: string; // Yeni eklendi
+      keyTakeawaysConcerns: string[]; // Yeni eklendi
     };
     financials?: {
-      revenue: FinancialMetric;
-      netIncome: FinancialMetric;
-      eps: FinancialMetric;
-      unusualItems?: string[];
-      accountingChanges?: string;
-      keyRatios?: { name: string; value: string; analysis: string }[];
-      highlights?: string[];
+      title: string; // Yeni eklendi
+      revenue: DetailedFinancialValue; // DetailedFinancialValue arayüzü kullanıldı
+      grossProfit: DetailedFinancialValue; // Yeni eklendi
+      operatingIncome: DetailedFinancialValue; // Yeni eklendi
+      netIncome: DetailedFinancialValue; // DetailedFinancialValue arayüzü kullanıldı
+      epsDiluted: DetailedFinancialValue; // DetailedFinancialValue arayüzü kullanıldı
+      profitMargins: {
+        // Yeni alt obje
+        grossProfitMargin: ProfitMargin;
+        operatingMargin: ProfitMargin;
+        netProfitMargin: ProfitMargin;
+        trendComment: string;
+      };
+      noteworthyItems: NoteworthyItem[]; // NoteworthyItem arayüzü kullanıldı
+      overallAnalysis: string; // Yeni eklendi
     };
     controls?: {
       summary: string;

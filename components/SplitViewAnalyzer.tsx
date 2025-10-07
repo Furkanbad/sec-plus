@@ -11,10 +11,9 @@ interface ApiResponse {
   originalHtml: string;
 }
 
-// Define SectionKey more robustly to match the analysis.sections keys
 type SectionKey =
   | "business"
-  | "risks" // Corrected from 'risk' to 'risks' to match SECAnalysis type
+  | "risks"
   | "legal"
   | "mdna"
   | "marketRisk"
@@ -33,13 +32,9 @@ export default function SplitViewAnalyzer() {
 
   const textViewerRef = useRef<HTMLDivElement>(null);
 
-  // Helper to safely convert values to string, handles null/undefined
   const safeStr = (value: any): string => {
     if (typeof value === "string") return value;
     if (value === null || value === undefined) return "";
-    // For non-string objects/arrays, consider stringifying or returning a specific message
-    // For now, we'll return an empty string for simplicity if it's not a string
-    // You might want to adjust this based on expected types in your SECAnalysis
     if (typeof value === "object") return JSON.stringify(value);
     return String(value);
   };
@@ -73,13 +68,11 @@ export default function SplitViewAnalyzer() {
 
       const data: ApiResponse = await response.json();
 
-      // Basic validation for critical data
       if (!data.analysis || !data.analysis.sections) {
         throw new Error("Invalid analysis data received: missing sections.");
       }
 
       setAnalysis(data.analysis);
-      // Ensure originalHtml is a string, default to empty
       setOriginalHtml(data.originalHtml || "");
 
       console.log("✅ State updated successfully with analysis data.");
@@ -96,10 +89,9 @@ export default function SplitViewAnalyzer() {
   const scrollToSection = (sectionKey: SectionKey) => {
     if (!textViewerRef.current) return;
 
-    // Use a more robust mapping for search terms
     const searchTerms: Record<SectionKey, string[]> = {
       business: ["item 1.", "item 1 –", "item 1:", "item&#160;1"],
-      risks: ["item 1a.", "item 1a –", "item 1a:", "item&#160;1a"], // Corrected key
+      risks: ["item 1a.", "item 1a –", "item 1a:", "item&#160;1a"],
       legal: ["item 3.", "item 3 –", "item 3:", "item&#160;3"],
       mdna: ["item 7.", "item 7 –", "item 7:", "item&#160;7"],
       marketRisk: ["item 7a.", "item 7a –", "item 7a:", "item&#160;7a"],
@@ -112,8 +104,6 @@ export default function SplitViewAnalyzer() {
     };
 
     const terms = searchTerms[sectionKey];
-    // Query more specific headings if possible, e.g., 'h2', 'h3'
-    // Or stick to all elements if the structure is inconsistent
     const allElements = Array.from(
       textViewerRef.current.querySelectorAll("h1, h2, h3, h4, p, div")
     );
@@ -126,11 +116,10 @@ export default function SplitViewAnalyzer() {
           if (el instanceof HTMLElement) {
             el.scrollIntoView({ behavior: "smooth", block: "start" });
 
-            // Highlight animation for clarity
             const originalBg = el.style.backgroundColor;
             const originalTrans = el.style.transition;
 
-            el.style.backgroundColor = "#fffbce"; // Lighter yellow for highlight
+            el.style.backgroundColor = "#fffbce";
             el.style.transition = "background-color 0.8s ease-in-out";
 
             setTimeout(() => {
@@ -138,7 +127,7 @@ export default function SplitViewAnalyzer() {
               el.style.transition = originalTrans;
             }, 2000);
           }
-          return; // Found and scrolled, exit
+          return;
         }
       }
     }
@@ -148,19 +137,17 @@ export default function SplitViewAnalyzer() {
     if (!originalHtml) return <div>Document content not available.</div>;
 
     try {
-      // DOMPurify should only run client-side
       const sanitizedHtml =
         typeof window !== "undefined"
           ? DOMPurify.sanitize(originalHtml, {
-              ADD_TAGS: ["meta", "style"], // Allow style tags for better rendering
-              ADD_ATTR: ["target", "rel", "style"], // Allow style attribute
+              ADD_TAGS: ["meta", "style"],
+              ADD_ATTR: ["target", "rel", "style"],
             })
-          : originalHtml; // Fallback for server-side if needed, though client-side render is key
+          : originalHtml;
 
       return (
         <div
           dangerouslySetInnerHTML={{ __html: sanitizedHtml }}
-          // Added 'sec-filing-content' for potential styling hooks
           className="prose prose-sm max-w-none sec-filing-content"
         />
       );
@@ -176,8 +163,6 @@ export default function SplitViewAnalyzer() {
     <div className="min-h-screen bg-gray-50 flex flex-col">
       <header className="sticky top-0 z-50 border-b bg-white shadow-sm">
         <div className="container mx-auto px-6 py-4">
-          {" "}
-          {/* Adjusted padding */}
           <h1 className="text-2xl font-bold text-gray-900">
             SEC Filing Analyzer
           </h1>
@@ -186,8 +171,6 @@ export default function SplitViewAnalyzer() {
 
       {analysis && (
         <div className="flex flex-1 overflow-hidden">
-          {" "}
-          {/* Use flex-1 to occupy remaining height */}
           <div
             ref={textViewerRef}
             className="w-1/2 overflow-y-auto bg-white border-r p-6"
@@ -203,7 +186,7 @@ export default function SplitViewAnalyzer() {
             </h2>
 
             {/* Business Overview */}
-            {analysis.sections?.business?.summary && (
+            {analysis.sections?.business && (
               <Card
                 className="mb-6 p-6 cursor-pointer hover:shadow-lg transition-shadow duration-200"
                 onClick={() => scrollToSection("business")}
@@ -215,25 +198,50 @@ export default function SplitViewAnalyzer() {
                 <p className="text-gray-700 mb-3 text-sm whitespace-pre-wrap">
                   {safeStr(analysis.sections.business.summary)}
                 </p>
-                {/* Corrected mapping for keyProducts */}
                 {analysis.sections.business.keyProducts &&
                   analysis.sections.business.keyProducts.length > 0 && (
                     <div className="mt-3">
                       <p className="text-sm font-semibold mb-2">
                         Key Products:
                       </p>
-                      <div className="flex flex-wrap gap-2">
+                      <div className="space-y-1">
                         {analysis.sections.business.keyProducts
-                          .slice(0, 8)
-                          .map((p: string, i: number) => (
+                          .slice(0, 4)
+                          .map((product, i) => (
+                            <div key={i} className="text-xs">
+                              <span className="font-medium">
+                                {product.name}
+                              </span>
+                              {product.marketPosition && (
+                                <span className="text-gray-600">
+                                  {" "}
+                                  - {product.marketPosition}
+                                </span>
+                              )}
+                            </div>
+                          ))}
+                      </div>
+                    </div>
+                  )}
+                {analysis.sections.business.competitiveAdvantages &&
+                  analysis.sections.business.competitiveAdvantages.length >
+                    0 && (
+                    <div className="mt-3">
+                      <p className="text-sm font-semibold mb-2">
+                        Competitive Advantages:
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        {analysis.sections.business.competitiveAdvantages.map(
+                          (adv, i) => (
                             <Badge
                               key={i}
                               variant="outline"
                               className="text-xs"
                             >
-                              {p}
+                              {adv}
                             </Badge>
-                          ))}
+                          )
+                        )}
                       </div>
                     </div>
                   )}
@@ -241,7 +249,6 @@ export default function SplitViewAnalyzer() {
             )}
 
             {/* Risk Factors */}
-            {/* Corrected key from 'risk' to 'risks' */}
             {analysis.sections?.risks && analysis.sections.risks.length > 0 && (
               <Card
                 className="mb-6 p-6 cursor-pointer hover:shadow-lg transition-shadow duration-200"
@@ -257,9 +264,7 @@ export default function SplitViewAnalyzer() {
                   {analysis.sections.risks.slice(0, 5).map((risk) => (
                     <div key={risk.id} className="p-3 bg-white rounded border">
                       <div className="flex items-center justify-between mb-1">
-                        <p className="font-semibold text-sm">
-                          {safeStr(risk.title)}
-                        </p>
+                        <p className="font-semibold text-sm">{risk.title}</p>
                         <Badge
                           className={`text-xs ${
                             risk.severity === "high"
@@ -270,12 +275,22 @@ export default function SplitViewAnalyzer() {
                           }`}
                           variant="default"
                         >
-                          {safeStr(risk.severity)}
+                          {risk.severity}
                         </Badge>
                       </div>
-                      <p className="text-xs text-gray-600">
-                        {safeStr(risk.description)}
+                      <p className="text-xs text-gray-600 mb-2">
+                        {risk.description}
                       </p>
+                      {risk.mitigationStrategies &&
+                        risk.mitigationStrategies !==
+                          "None explicitly mentioned" && (
+                          <p className="text-xs text-blue-600 italic">
+                            Mitigation:{" "}
+                            {Array.isArray(risk.mitigationStrategies)
+                              ? risk.mitigationStrategies.join(", ")
+                              : risk.mitigationStrategies}
+                          </p>
+                        )}
                     </div>
                   ))}
                 </div>
@@ -283,7 +298,7 @@ export default function SplitViewAnalyzer() {
             )}
 
             {/* Legal Proceedings */}
-            {analysis.sections?.legal?.summary && (
+            {analysis.sections?.legal && (
               <Card
                 className="mb-6 p-6 cursor-pointer hover:shadow-lg transition-shadow duration-200"
                 onClick={() => scrollToSection("legal")}
@@ -293,29 +308,46 @@ export default function SplitViewAnalyzer() {
                   <h3 className="text-lg font-bold">Legal Proceedings</h3>
                 </div>
                 <p className="text-gray-700 text-sm">
-                  {safeStr(analysis.sections.legal.summary)}
+                  {analysis.sections.legal.overallLegalSummary}
                 </p>
-                {/* Corrected mapping for materialCases */}
                 {analysis.sections.legal.materialCases &&
                   analysis.sections.legal.materialCases.length > 0 && (
-                    <div className="mt-3">
+                    <div className="mt-3 space-y-2">
                       <p className="text-sm font-semibold mb-2">
                         Material Cases:
                       </p>
-                      <ul className="text-xs text-gray-600 space-y-1">
-                        {analysis.sections.legal.materialCases.map(
-                          (c: string, i: number) => (
-                            <li key={i}>• {c}</li>
-                          )
-                        )}
-                      </ul>
+                      {analysis.sections.legal.materialCases
+                        .slice(0, 3)
+                        .map((legalCase, i) => (
+                          <div key={i} className="p-3 bg-gray-50 rounded">
+                            <p className="text-sm font-medium">
+                              {legalCase.caseTitle}
+                            </p>
+                            <p className="text-xs text-gray-600 mt-1">
+                              {legalCase.natureOfClaim}
+                            </p>
+                            <p className="text-xs text-gray-600">
+                              Status: {legalCase.currentStatus}
+                            </p>
+                            {legalCase.potentialFinancialImpact
+                              .estimatedLossRange !== "Not estimable" && (
+                              <p className="text-xs text-red-600 mt-1">
+                                Potential Loss:{" "}
+                                {
+                                  legalCase.potentialFinancialImpact
+                                    .estimatedLossRange
+                                }
+                              </p>
+                            )}
+                          </div>
+                        ))}
                     </div>
                   )}
               </Card>
             )}
 
-            {/* Management Discussion and Analysis (MD&A) */}
-            {analysis.sections?.mdna?.executiveSummary && (
+            {/* Management Discussion and Analysis */}
+            {analysis.sections?.mdna && (
               <Card
                 className="mb-6 p-6 cursor-pointer hover:shadow-lg transition-shadow duration-200"
                 onClick={() => scrollToSection("mdna")}
@@ -324,14 +356,37 @@ export default function SplitViewAnalyzer() {
                   <span className="text-2xl">📊</span>
                   <h3 className="text-lg font-bold">Management Discussion</h3>
                 </div>
-                <p className="text-gray-700 text-sm">
-                  {safeStr(analysis.sections.mdna.executiveSummary)}
+                <p className="text-gray-700 text-sm whitespace-pre-wrap mb-3">
+                  {analysis.sections.mdna.executiveSummary}
                 </p>
+                {analysis.sections.mdna.knownTrendsUncertaintiesOpportunities &&
+                  analysis.sections.mdna.knownTrendsUncertaintiesOpportunities
+                    .length > 0 && (
+                    <div className="mt-3">
+                      <p className="text-sm font-semibold mb-2">
+                        Key Trends & Opportunities:
+                      </p>
+                      <div className="space-y-1">
+                        {analysis.sections.mdna.knownTrendsUncertaintiesOpportunities
+                          .slice(0, 3)
+                          .map((item, i) => (
+                            <div key={i} className="text-xs">
+                              <p className="font-medium">
+                                {item.itemDescription}
+                              </p>
+                              <p className="text-gray-600">
+                                {item.impactBenefit}
+                              </p>
+                            </div>
+                          ))}
+                      </div>
+                    </div>
+                  )}
               </Card>
             )}
 
             {/* Market Risk */}
-            {analysis.sections?.marketRisk?.summary && (
+            {analysis.sections?.marketRisk && (
               <Card
                 className="mb-6 p-6 cursor-pointer hover:shadow-lg transition-shadow duration-200"
                 onClick={() => scrollToSection("marketRisk")}
@@ -340,73 +395,141 @@ export default function SplitViewAnalyzer() {
                   <span className="text-2xl">📉</span>
                   <h3 className="text-lg font-bold">Market Risk</h3>
                 </div>
-                <p className="text-gray-700 text-sm">
-                  {safeStr(analysis.sections.marketRisk.summary)}
+                <p className="text-gray-700 text-sm mb-3">
+                  {analysis.sections.marketRisk.overallSummary}
                 </p>
+                <div className="grid grid-cols-2 gap-3">
+                  {analysis.sections.marketRisk.interestRateRisk.exposure !==
+                    "None reported" && (
+                    <div className="p-3 bg-blue-50 rounded">
+                      <p className="text-xs font-semibold">
+                        Interest Rate Risk
+                      </p>
+                      <p className="text-xs text-gray-600 mt-1">
+                        {
+                          analysis.sections.marketRisk.interestRateRisk
+                            .potentialImpact
+                        }
+                      </p>
+                    </div>
+                  )}
+                  {analysis.sections.marketRisk.currencyRisk.exposure !==
+                    "None reported" && (
+                    <div className="p-3 bg-green-50 rounded">
+                      <p className="text-xs font-semibold">Currency Risk</p>
+                      <p className="text-xs text-gray-600 mt-1">
+                        {
+                          analysis.sections.marketRisk.currencyRisk
+                            .potentialImpact
+                        }
+                      </p>
+                    </div>
+                  )}
+                </div>
               </Card>
             )}
 
             {/* Financials - Key Metrics */}
-            {analysis.sections?.financials?.revenue?.value ||
-            analysis.sections?.financials?.netIncome?.value ||
-            analysis.sections?.financials?.eps?.value ||
-            (analysis.sections?.financials?.unusualItems &&
-              analysis.sections.financials.unusualItems.length > 0) ? (
+            {analysis.sections?.financials && (
               <Card
                 className="mb-6 p-6 cursor-pointer hover:shadow-lg transition-shadow duration-200"
                 onClick={() => scrollToSection("financials")}
               >
                 <div className="flex items-center gap-2 mb-3">
                   <span className="text-2xl">💰</span>
-                  <h3 className="text-lg font-bold">Key Financial Metrics</h3>
+                  <h3 className="text-lg font-bold">Financial Performance</h3>
                 </div>
                 <div className="grid grid-cols-3 gap-3 mb-3">
-                  {analysis.sections.financials?.revenue?.value && (
-                    <div className="p-3 bg-blue-50 rounded">
-                      <p className="text-xs text-gray-600">Revenue</p>
-                      <p className="text-lg font-bold">
-                        {safeStr(analysis.sections.financials.revenue.value)}
-                      </p>
-                    </div>
-                  )}
-                  {analysis.sections.financials?.netIncome?.value && (
-                    <div className="p-3 bg-green-50 rounded">
-                      <p className="text-xs text-gray-600">Net Income</p>
-                      <p className="text-lg font-bold">
-                        {safeStr(analysis.sections.financials.netIncome.value)}
-                      </p>
-                    </div>
-                  )}
-                  {analysis.sections.financials?.eps?.value && (
-                    <div className="p-3 bg-purple-50 rounded">
-                      <p className="text-xs text-gray-600">EPS</p>
-                      <p className="text-lg font-bold">
-                        {safeStr(analysis.sections.financials.eps.value)}
-                      </p>
-                    </div>
-                  )}
+                  <div className="p-3 bg-blue-50 rounded">
+                    <p className="text-xs text-gray-600">Revenue</p>
+                    <p className="text-lg font-bold">
+                      {analysis.sections.financials.revenue.currentYear.value}
+                    </p>
+                    <p className="text-xs text-gray-600">
+                      {analysis.sections.financials.revenue.changePercentage}{" "}
+                      YoY
+                    </p>
+                  </div>
+                  <div className="p-3 bg-green-50 rounded">
+                    <p className="text-xs text-gray-600">Net Income</p>
+                    <p className="text-lg font-bold">
+                      {analysis.sections.financials.netIncome.currentYear.value}
+                    </p>
+                    <p className="text-xs text-gray-600">
+                      {analysis.sections.financials.netIncome.changePercentage}{" "}
+                      YoY
+                    </p>
+                  </div>
+                  <div className="p-3 bg-purple-50 rounded">
+                    <p className="text-xs text-gray-600">EPS (Diluted)</p>
+                    <p className="text-lg font-bold">
+                      {
+                        analysis.sections.financials.epsDiluted.currentYear
+                          .value
+                      }
+                    </p>
+                    <p className="text-xs text-gray-600">
+                      {analysis.sections.financials.epsDiluted.changePercentage}{" "}
+                      YoY
+                    </p>
+                  </div>
                 </div>
-                {/* Corrected mapping for unusualItems */}
-                {analysis.sections.financials?.unusualItems &&
-                  analysis.sections.financials.unusualItems.length > 0 && (
+                {analysis.sections.financials.profitMargins && (
+                  <div className="mt-3 p-3 bg-gray-50 rounded">
+                    <p className="text-sm font-semibold mb-2">
+                      Profit Margins:
+                    </p>
+                    <div className="grid grid-cols-3 gap-2 text-xs">
+                      <div>
+                        <p className="text-gray-600">Gross</p>
+                        <p className="font-medium">
+                          {
+                            analysis.sections.financials.profitMargins
+                              .grossProfitMargin.currentYear
+                          }
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-gray-600">Operating</p>
+                        <p className="font-medium">
+                          {
+                            analysis.sections.financials.profitMargins
+                              .operatingMargin.currentYear
+                          }
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-gray-600">Net</p>
+                        <p className="font-medium">
+                          {
+                            analysis.sections.financials.profitMargins
+                              .netProfitMargin.currentYear
+                          }
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+                {analysis.sections.financials.noteworthyItems &&
+                  analysis.sections.financials.noteworthyItems.length > 0 && (
                     <div className="mt-3 p-3 bg-yellow-50 rounded border border-yellow-200">
                       <p className="text-xs font-semibold text-yellow-800 mb-1">
-                        ⚠️ Items to Review:
+                        ⚠️ Notable Items:
                       </p>
                       <ul className="text-xs text-gray-700 space-y-1">
-                        {analysis.sections.financials.unusualItems.map(
-                          (item: string, i: number) => (
-                            <li key={i}>• {item}</li>
+                        {analysis.sections.financials.noteworthyItems.map(
+                          (item, i) => (
+                            <li key={i}>• {item.description}</li>
                           )
                         )}
                       </ul>
                     </div>
                   )}
               </Card>
-            ) : null}
+            )}
 
             {/* Internal Controls */}
-            {analysis.sections?.controls?.summary && (
+            {analysis.sections?.controls && (
               <Card
                 className="mb-6 p-6 cursor-pointer hover:shadow-lg transition-shadow duration-200"
                 onClick={() => scrollToSection("controls")}
@@ -416,21 +539,18 @@ export default function SplitViewAnalyzer() {
                   <h3 className="text-lg font-bold">Internal Controls</h3>
                 </div>
                 <p className="text-gray-700 text-sm">
-                  {safeStr(analysis.sections.controls.summary)}
+                  {analysis.sections.controls.summary}
                 </p>
-                {/* Corrected logic for materialWeaknesses: Ensure it's an array */}
                 {(() => {
                   const weaknesses =
-                    analysis.sections.controls?.materialWeaknesses;
-                  // Ensure 'weaknesses' is an array, if it's a string, convert it to an array with one element
-                  const weaknessesArray = Array.isArray(weaknesses)
+                    analysis.sections.controls.materialWeaknesses;
+                  const weaknessArray = Array.isArray(weaknesses)
                     ? weaknesses
-                    : typeof weaknesses === "string" && weaknesses
+                    : typeof weaknesses === "string"
                     ? [weaknesses]
                     : [];
-
-                  const filteredWeaknesses = weaknessesArray.filter(
-                    (w: string) => w !== "None reported"
+                  const filteredWeaknesses = weaknessArray.filter(
+                    (w) => w && w !== "None reported"
                   );
 
                   return (
@@ -440,7 +560,7 @@ export default function SplitViewAnalyzer() {
                           🚨 Material Weaknesses:
                         </p>
                         <ul className="text-xs text-gray-700 space-y-1">
-                          {filteredWeaknesses.map((w: string, i: number) => (
+                          {filteredWeaknesses.map((w, i) => (
                             <li key={i}>• {w}</li>
                           ))}
                         </ul>
@@ -451,8 +571,60 @@ export default function SplitViewAnalyzer() {
               </Card>
             )}
 
+            {/* Executive Compensation */}
+            {analysis.sections?.compensation && (
+              <Card
+                className="mb-6 p-6 cursor-pointer hover:shadow-lg transition-shadow duration-200"
+                onClick={() => scrollToSection("compensation")}
+              >
+                <div className="flex items-center gap-2 mb-3">
+                  <span className="text-2xl">💼</span>
+                  <h3 className="text-lg font-bold">Executive Compensation</h3>
+                </div>
+                <p className="text-gray-700 text-sm">
+                  {analysis.sections.compensation.summary}
+                </p>
+                {analysis.sections.compensation.ceoTotalComp && (
+                  <div className="mt-3 p-3 bg-blue-50 rounded">
+                    <p className="text-xs text-gray-600">
+                      CEO Total Compensation
+                    </p>
+                    <p className="text-lg font-bold">
+                      {analysis.sections.compensation.ceoTotalComp}
+                    </p>
+                  </div>
+                )}
+                {(() => {
+                  const flags = analysis.sections.compensation.redFlags;
+                  const flagsArray = Array.isArray(flags)
+                    ? flags
+                    : typeof flags === "string"
+                    ? [flags]
+                    : [];
+                  const filteredFlags = flagsArray.filter(
+                    (f) => f && f !== "None identified"
+                  );
+
+                  return (
+                    filteredFlags.length > 0 && (
+                      <div className="mt-3 p-3 bg-red-50 rounded border border-red-200">
+                        <p className="text-xs font-semibold text-red-800 mb-1">
+                          🚨 Red Flags:
+                        </p>
+                        <ul className="text-xs text-gray-700 space-y-1">
+                          {filteredFlags.map((f, i) => (
+                            <li key={i}>• {f}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )
+                  );
+                })()}
+              </Card>
+            )}
+
             {/* Ownership Structure */}
-            {analysis.sections?.ownership?.summary && (
+            {analysis.sections?.ownership && (
               <Card
                 className="mb-6 p-6 cursor-pointer hover:shadow-lg transition-shadow duration-200"
                 onClick={() => scrollToSection("ownership")}
@@ -462,13 +634,13 @@ export default function SplitViewAnalyzer() {
                   <h3 className="text-lg font-bold">Ownership Structure</h3>
                 </div>
                 <p className="text-gray-700 text-sm">
-                  {safeStr(analysis.sections.ownership.summary)}
+                  {analysis.sections.ownership.summary}
                 </p>
-                {analysis.sections.ownership?.insiderOwnership && (
+                {analysis.sections.ownership.insiderOwnership && (
                   <div className="mt-3 p-3 bg-blue-50 rounded">
                     <p className="text-xs text-gray-600">Insider Ownership</p>
                     <p className="text-lg font-bold">
-                      {safeStr(analysis.sections.ownership.insiderOwnership)}
+                      {analysis.sections.ownership.insiderOwnership}
                     </p>
                   </div>
                 )}
@@ -476,7 +648,7 @@ export default function SplitViewAnalyzer() {
             )}
 
             {/* Related Party Transactions */}
-            {analysis.sections?.relatedParty?.summary && (
+            {analysis.sections?.relatedParty && (
               <Card
                 className="mb-6 p-6 cursor-pointer hover:shadow-lg transition-shadow duration-200"
                 onClick={() => scrollToSection("relatedParty")}
@@ -488,10 +660,9 @@ export default function SplitViewAnalyzer() {
                   </h3>
                 </div>
                 <p className="text-gray-700 text-sm">
-                  {safeStr(analysis.sections.relatedParty.summary)}
+                  {analysis.sections.relatedParty.summary}
                 </p>
-                {/* Corrected mapping for concerns */}
-                {analysis.sections.relatedParty?.concerns &&
+                {analysis.sections.relatedParty.concerns &&
                   analysis.sections.relatedParty.concerns.filter(
                     (c) => c !== "None identified"
                   ).length > 0 && (
@@ -501,8 +672,8 @@ export default function SplitViewAnalyzer() {
                       </p>
                       <ul className="text-xs text-gray-700 space-y-1">
                         {analysis.sections.relatedParty.concerns
-                          .filter((c: string) => c !== "None identified")
-                          .map((c: string, i: number) => (
+                          .filter((c) => c !== "None identified")
+                          .map((c, i) => (
                             <li key={i}>• {c}</li>
                           ))}
                       </ul>
@@ -517,8 +688,6 @@ export default function SplitViewAnalyzer() {
       {/* Initial state: Input form */}
       {!analysis && !loading && (
         <div className="flex items-center justify-center flex-1">
-          {" "}
-          {/* Use flex-1 */}
           <div className="w-full max-w-md">
             <div className="text-center mb-8">
               <h2 className="text-3xl font-bold text-gray-900 mb-3">
@@ -531,8 +700,6 @@ export default function SplitViewAnalyzer() {
             </div>
 
             <div className="bg-white rounded-lg shadow-lg border p-6">
-              {" "}
-              {/* Added shadow-lg */}
               <input
                 type="text"
                 placeholder="e.g., AAPL, MSFT"
@@ -549,7 +716,7 @@ export default function SplitViewAnalyzer() {
               />
               <Button
                 onClick={handleAnalyze}
-                disabled={!ticker.trim() || loading} // Disable button when loading too
+                disabled={!ticker.trim() || loading}
                 className="w-full py-3 text-base bg-blue-600 hover:bg-blue-700 transition-colors duration-200"
               >
                 {loading ? "Analyzing..." : "Analyze Filing"}
@@ -562,12 +729,8 @@ export default function SplitViewAnalyzer() {
       {/* Loading state */}
       {loading && (
         <div className="flex items-center justify-center flex-1">
-          {" "}
-          {/* Use flex-1 */}
           <div className="text-center">
             <div className="w-16 h-16 mx-auto mb-4 rounded-xl bg-blue-600 flex items-center justify-center animate-bounce">
-              {" "}
-              {/* Changed pulse to bounce for variety */}
               <span className="text-3xl">📄</span>
             </div>
             <p className="font-semibold text-gray-700 text-lg">
