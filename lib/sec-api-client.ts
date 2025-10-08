@@ -136,6 +136,7 @@ export class SECApiClient {
 
     const items = {
       business: "1",
+      properties: "2",
       risk: "1A",
       legal: "3",
       mdna: "7",

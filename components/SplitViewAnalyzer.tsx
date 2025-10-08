@@ -86,21 +86,168 @@ export default function SplitViewAnalyzer() {
     }
   };
 
+  // Mevcut 'scrollToSection' fonksiyonunuzu bununla değiştirin veya ekleyin
+  const highlightAndScroll = (excerpt: string) => {
+    if (!textViewerRef.current || !excerpt) return;
+
+    const viewer = textViewerRef.current;
+    const sanitizedExcerpt = DOMPurify.sanitize(excerpt, {
+      USE_PROFILES: { html: true },
+    }); // Alıntıyı da temizleyelim
+
+    // Önceki vurgulamaları temizle
+    viewer.querySelectorAll(".highlighted-text").forEach((el) => {
+      const parent = el.parentNode;
+      if (parent) {
+        parent.replaceChild(document.createTextNode(el.textContent || ""), el);
+      }
+    });
+
+    // Metni arama ve vurgulama
+    const walker = document.createTreeWalker(
+      viewer,
+      NodeFilter.SHOW_TEXT,
+      null as any // TypeScript için null as any
+    );
+
+    let node;
+    let found = false;
+    while ((node = walker.nextNode())) {
+      const text = node.textContent;
+      if (text && text.includes(excerpt)) {
+        // Basit bir includes kontrolü
+        const parentElement = node.parentElement;
+        if (parentElement) {
+          const regex = new RegExp(
+            excerpt.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
+            "g"
+          ); // Özel karakterleri kaçışla
+          parentElement.innerHTML = parentElement.innerHTML.replace(
+            regex,
+            `<span class="highlighted-text" style="background-color: #fffbce; transition: background-color 0.8s ease-in-out; border-bottom: 2px solid #f0ad4e;">${excerpt}</span>`
+          );
+          const highlightedElement =
+            parentElement.querySelector(".highlighted-text");
+          if (highlightedElement) {
+            highlightedElement.scrollIntoView({
+              behavior: "smooth",
+              block: "center",
+            });
+
+            // Vurguyu kısa bir süre sonra kaldırmak için
+            setTimeout(() => {
+              if (highlightedElement && highlightedElement.parentNode) {
+                const originalText = highlightedElement.textContent;
+                const parent = highlightedElement.parentNode;
+                if (originalText && parent) {
+                  parent.replaceChild(
+                    document.createTextNode(originalText),
+                    highlightedElement
+                  );
+                }
+              }
+            }, 3000); // 3 saniye sonra vurguyu kaldır
+            found = true;
+            break;
+          }
+        }
+      }
+    }
+
+    if (!found) {
+      console.warn("Excerpt not found in document:", excerpt);
+      // Eğer doğrudan metin bulunamazsa, belki ilgili bölüm başına kaydırma mantığını kullanmaya devam edebiliriz
+      // veya kullanıcıya bulunamadığına dair bir bildirim gösterebiliriz.
+      // Şimdilik doğrudan bölüm başına kaydırma mantığını korumak için scrollToSection'ı çağırabiliriz.
+      // Ancak bu fonksiyonun amacı tam metin vurgulamak olduğu için şimdilik devre dışı bırakıyorum.
+      // scrollToSection(determineSectionKey(excerpt)); // excerpt'ten bölüm anahtarını belirleyen bir fonksiyonunuz yoksa bu çalışmaz
+    }
+  };
+
+  // Mevcut scrollToSection fonksiyonunuzu bu yeni fonksiyona uyarlayabiliriz veya ayrı tutabiliriz.
+  // Eğer sadece bölüme kaydırmak yeterliyse, 'highlightAndScroll' yerine bunu çağırın.
   const scrollToSection = (sectionKey: SectionKey) => {
     if (!textViewerRef.current) return;
 
     const searchTerms: Record<SectionKey, string[]> = {
-      business: ["item 1.", "item 1 –", "item 1:", "item&#160;1"],
-      risks: ["item 1a.", "item 1a –", "item 1a:", "item&#160;1a"],
-      legal: ["item 3.", "item 3 –", "item 3:", "item&#160;3"],
-      mdna: ["item 7.", "item 7 –", "item 7:", "item&#160;7"],
-      marketRisk: ["item 7a.", "item 7a –", "item 7a:", "item&#160;7a"],
-      financials: ["item 8.", "item 8 –", "item 8:", "item&#160;8"],
-      controls: ["item 9a.", "item 9a –", "item 9a:", "item&#160;9a"],
-      directors: ["item 10.", "item 10 –", "item 10:", "item&#160;10"],
-      compensation: ["item 11.", "item 11 –", "item 11:", "item&#160;11"],
-      ownership: ["item 12.", "item 12 –", "item 12:", "item&#160;12"],
-      relatedParty: ["item 13.", "item 13 –", "item 13:", "item&#160;13"],
+      // ... mevcut arama terimleriniz ...
+      business: [
+        "item 1.",
+        "item 1 –",
+        "item 1:",
+        "item&#160;1",
+        "item 1. business",
+      ],
+      risks: [
+        "item 1a.",
+        "item 1a –",
+        "item 1a:",
+        "item&#160;1a",
+        "item 1a. risk factors",
+      ],
+      legal: [
+        "item 3.",
+        "item 3 –",
+        "item 3:",
+        "item&#160;3",
+        "item 3. legal proceedings",
+      ],
+      mdna: [
+        "item 7.",
+        "item 7 –",
+        "item 7:",
+        "item&#160;7",
+        "item 7. management's discussion and analysis",
+      ],
+      marketRisk: [
+        "item 7a.",
+        "item 7a –",
+        "item 7a:",
+        "item&#160;7a",
+        "item 7a. quantitative and qualitative disclosures about market risk",
+      ],
+      financials: [
+        "item 8.",
+        "item 8 –",
+        "item 8:",
+        "item&#160;8",
+        "item 8. financial statements and supplementary data",
+      ],
+      controls: [
+        "item 9a.",
+        "item 9a –",
+        "item 9a:",
+        "item&#160;9a",
+        "item 9a. controls and procedures",
+      ],
+      directors: [
+        "item 10.",
+        "item 10 –",
+        "item 10:",
+        "item&#160;10",
+        "item 10. directors, executive officers and corporate governance",
+      ],
+      compensation: [
+        "item 11.",
+        "item 11 –",
+        "item 11:",
+        "item&#160;11",
+        "item 11. executive compensation",
+      ],
+      ownership: [
+        "item 12.",
+        "item 12 –",
+        "item 12:",
+        "item&#160;12",
+        "item 12. security ownership of certain beneficial owners and management and related stockholder matters",
+      ],
+      relatedParty: [
+        "item 13.",
+        "item 13 –",
+        "item 13:",
+        "item&#160;13",
+        "item 13. certain relationships and related transactions, and director independence",
+      ],
     };
 
     const terms = searchTerms[sectionKey];
@@ -109,17 +256,24 @@ export default function SplitViewAnalyzer() {
     );
 
     for (const el of allElements) {
+      // textContent'i doğrudan kullanmak, HTML entity'lerini normal metin olarak okur
       const text = (el.textContent || "").toLowerCase();
+      // innerHTML'i kullanmak, HTML entity'lerini dikkate alır (örneğin &#160;)
+      const innerHtml = (el.innerHTML || "").toLowerCase();
 
       for (const term of terms) {
-        if (text.includes(term.toLowerCase())) {
+        // Hem textContent hem de innerHTML üzerinde arama yap
+        if (
+          text.includes(term.toLowerCase()) ||
+          innerHtml.includes(term.toLowerCase())
+        ) {
           if (el instanceof HTMLElement) {
             el.scrollIntoView({ behavior: "smooth", block: "start" });
 
             const originalBg = el.style.backgroundColor;
             const originalTrans = el.style.transition;
 
-            el.style.backgroundColor = "#fffbce";
+            el.style.backgroundColor = "#e0f2f7"; // Daha yumuşak bir mavi vurgu
             el.style.transition = "background-color 0.8s ease-in-out";
 
             setTimeout(() => {
@@ -131,6 +285,7 @@ export default function SplitViewAnalyzer() {
         }
       }
     }
+    console.warn(`Section heading for ${sectionKey} not found.`);
   };
 
   const renderOriginalHtmlContent = () => {
