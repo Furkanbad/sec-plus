@@ -47,8 +47,8 @@ const createSectionPrompt = (
 // Basitlik adına, burada manuel olarak yazacağım.
 const businessOverviewInstructions = `
   Extract the executive summary, business description, key strategies, competitive strengths, operating segments, and recent developments.
-  Provide summaries for each, and for recent developments, specify event, impact, and date if available.
-  Collect any relevant excerpts that support the overall business overview.
+  Provide concise summaries for each. For recent developments, specify event, impact, and date if available.
+  **CRITICAL: Identify and extract 1-2 direct, highly relevant excerpts (1-3 sentences each) from the provided text that best encapsulate the overall business overview or key points. Prioritize direct quotes.**
 `;
 const businessOverviewSchemaFragment = `{
   "businessOverview": {
@@ -62,14 +62,14 @@ const businessOverviewSchemaFragment = `{
     "recentDevelopments": [
       { "event": "Event 1", "impact": "Impact 1", "date": "YYYY-MM-DD" }
     ],
-    "excerpts": ["Relevant excerpt 1", "Relevant excerpt 2"]
+    "excerpts": ["Direct quote or representative sentence 1", "Direct quote or representative sentence 2"]
   }
 }`;
 
 const currentPeriodHighlightsInstructions = `
   Identify the fiscal year end, key achievements, challenges, and significant financial highlights for the current period.
   Include specific metrics, values, and trends.
-  Provide a single, concise excerpt that summarizes the main highlights of the period.
+  **CRITICAL: Extract the single most representative, concise excerpt (1-2 sentences, preferably a direct quote) that summarizes the main highlights of the period. This excerpt should directly reflect the core message.**
 `;
 const currentPeriodHighlightsSchemaFragment = `{
   "currentPeriodHighlights": {
@@ -79,7 +79,7 @@ const currentPeriodHighlightsSchemaFragment = `{
     "financialHighlights": [
       { "metric": "Revenue", "value": "$X", "trend": "Up/Down" }
     ],
-    "excerpt": "A concise excerpt from the text."
+    "excerpt": "A highly concise, direct excerpt from the text summarizing highlights."
   }
 }`;
 
@@ -87,14 +87,14 @@ const resultsOfOperationsInstructions = `
   Perform a detailed analysis of the company's results of operations.
   Include overall performance summary, revenue analysis (total, by segment, drivers, geographic), cost analysis (cost of revenue, gross margin, operating expenses breakdown, cost drivers), and profitability analysis (operating income, net income, margins).
   Also include store metrics if applicable, and any comparative tables.
-  Extract relevant excerpts for each sub-section where possible.
+  **CRITICAL: For each relevant sub-section (overall performance, total revenue, cost analysis, profitability analysis), identify and provide 1-2 direct, highly relevant excerpts (1-3 sentences each) from the text. Prioritize direct quotes that provide context or summarize key findings.**
 `;
 const resultsOfOperationsSchemaFragment = `{
   "resultsOfOperations": {
     "overallPerformance": {
       "summary": "Overall performance summary.",
       "keyPoints": ["Key point 1"],
-      "excerpts": ["Excerpt 1"]
+      "excerpts": ["Direct quote or representative sentence 1"]
     },
     "revenueAnalysis": {
       "totalRevenue": {
@@ -102,14 +102,14 @@ const resultsOfOperationsSchemaFragment = `{
         "priorPeriod": {"value": "$Y", "period": "YYYY"},
         "change": {"absolute": "$Z", "percentage": "P%"},
         "commentary": "Revenue commentary.",
-        "excerpt": "Relevant revenue excerpt."
+        "excerpt": "Direct quote or representative sentence on total revenue."
       },
       "revenueBySegment": [
         { "segmentName": "Segment A", "revenue": {"currentPeriod": {"value": "$X", "period": "YYYY"}}}
       ],
       "revenueDrivers": [{"driver": "Driver 1", "impact": "Impact 1"}],
       "geographicRevenue": [{"region": "Region A", "revenue": "$X"}],
-      "excerpts": ["Revenue analysis excerpt."]
+      "excerpts": ["Direct quote or representative sentence on revenue analysis."]
     },
     "costAnalysis": { /* Similar structure to revenueAnalysis for costs */
       "costOfRevenue": { /* financialMetricSchema */ },
@@ -120,14 +120,14 @@ const resultsOfOperationsSchemaFragment = `{
       },
       "costDrivers": ["Driver 1"],
       "efficiencyMeasures": ["Measure 1"],
-      "excerpts": ["Cost analysis excerpt."]
+      "excerpts": ["Direct quote or representative sentence on cost analysis."]
     },
     "profitabilityAnalysis": { /* Similar structure for profitability */
       "operatingIncome": { /* financialMetricSchema */ },
       "netIncome": { /* financialMetricSchema */ },
       "margins": { "grossMargin": "X%", "operatingMargin": "Y%", "netMargin": "Z%" },
       "nonGAAPReconciliation": [{"item": "Item 1", "amount": "$X"}],
-      "excerpts": ["Profitability analysis excerpt."]
+      "excerpts": ["Direct quote or representative sentence on profitability analysis."]
     },
     "storeMetrics": { /* storeMetricsSchema */ },
     "comparativeTables": [
@@ -143,38 +143,39 @@ const resultsOfOperationsSchemaFragment = `{
 const liquidityAndCapitalResourcesInstructions = `
   Analyze the company's liquidity and capital resources.
   Cover cash position, detailed cash flow analysis (operating, investing, financing), capital structure (debt, equity, credit facilities, covenants), and future capital needs with funding strategies and commitments.
-  Include specific amounts, trends, and relevant excerpts.
+  Include specific amounts, trends.
+  **CRITICAL: Extract a direct, concise excerpt (1-2 sentences) for the 'cashPosition', 'capitalStructure', and 'futureCapitalNeeds' if explicitly discussed. Also, provide 1-2 overall excerpts for the 'cashFlowAnalysis' section summarizing key movements. Prioritize direct quotes.**
 `;
 const liquidityAndCapitalResourcesSchemaFragment = `{
   "liquidityAndCapitalResources": {
     "cashPosition": {
       "currentCash": "$X",
       "narrative": "Narrative summary.",
-      "excerpt": "Relevant excerpt."
+      "excerpt": "Direct quote or representative sentence for cash position."
     },
     "cashFlowAnalysis": {
       "operatingActivities": {"amount": "$X", "keyDrivers": ["Driver 1"]},
       "investingActivities": {"amount": "$X", "majorInvestments": [{"description": "Investment 1"}]},
       "financingActivities": {"amount": "$X", "debtActivity": "$Y"},
-      "excerpts": ["Cash flow excerpt."]
+      "excerpts": ["Direct quote or representative sentence for cash flow 1", "Direct quote or representative sentence for cash flow 2"]
     },
     "capitalStructure": {
       "totalDebt": "$X",
       "creditFacilities": [{"facility": "Facility 1", "available": "$Y"}],
-      "excerpt": "Capital structure excerpt."
+      "excerpt": "Direct quote or representative sentence for capital structure."
     },
     "futureCapitalNeeds": {
       "anticipatedNeeds": ["Need 1"],
       "fundingSources": ["Source 1"],
       "commitments": [{"type": "Type 1", "amount": "$X"}],
-      "excerpt": "Future capital needs excerpt."
+      "excerpt": "Direct quote or representative sentence for future capital needs."
     }
   }
 }`;
 
 const marketTrendsAndOutlookInstructions = `
   Discuss industry trends, the competitive landscape, the regulatory environment (issues, impact, management response), and economic factors (factor, current impact, expected impact).
-  Collect relevant excerpts for this section.
+  **CRITICAL: Extract 1-2 direct, highly relevant excerpts (1-3 sentences each) that summarize or illustrate key market trends, competitive factors, or significant regulatory/economic impacts. Prioritize direct quotes.**
 `;
 const marketTrendsAndOutlookSchemaFragment = `{
   "marketTrendsAndOutlook": {
@@ -186,14 +187,14 @@ const marketTrendsAndOutlookSchemaFragment = `{
     "economicFactors": [
       { "factor": "Inflation", "currentImpact": "Impact" }
     ],
-    "excerpts": ["Market trends excerpt."]
+    "excerpts": ["Direct quote or representative sentence 1", "Direct quote or representative sentence 2"]
   }
 }`;
 
 const criticalAccountingPoliciesInstructions = `
   Identify 2-4 critical accounting policies or estimates.
   For each policy, provide its name, a description, key assumptions, and any sensitivity analysis.
-  Include a direct excerpt for each policy.
+  **CRITICAL: Include a direct, concise excerpt (1-3 sentences) from the text for EACH identified policy. This excerpt should directly describe or refer to the policy.**
 `;
 const criticalAccountingPoliciesSchemaFragment = `{
   "criticalAccountingPolicies": [
@@ -202,7 +203,7 @@ const criticalAccountingPoliciesSchemaFragment = `{
       "description": "Description of policy.",
       "keyAssumptions": ["Assumption 1"],
       "sensitivityAnalysis": "Sensitivity details.",
-      "excerpt": "Policy 1 excerpt."
+      "excerpt": "Direct quote describing policy 1."
     }
   ]
 }`;
@@ -210,7 +211,8 @@ const criticalAccountingPoliciesSchemaFragment = `{
 const knownTrendsAndUncertaintiesInstructions = `
   Identify significant known trends, uncertainties, and opportunities.
   For each, describe its nature, potential impact/benefit, and mitigation strategy.
-  Include forward-looking statements (guidance, strategic initiatives, cautionary note) and relevant excerpts.
+  Include forward-looking statements (guidance, strategic initiatives, cautionary note).
+  **CRITICAL: Extract 1-2 direct, highly relevant excerpts (1-3 sentences each) that summarize or illustrate significant known trends, uncertainties, risks, or opportunities. Prioritize direct quotes.**
 `;
 const knownTrendsAndUncertaintiesSchemaFragment = `{
   "knownTrendsAndUncertainties": {
@@ -225,14 +227,15 @@ const knownTrendsAndUncertaintiesSchemaFragment = `{
       "strategicInitiatives": ["Initiative 1"],
       "cautionaryNote": "Cautionary note."
     },
-    "excerpts": ["Known trends excerpt."]
+    "excerpts": ["Direct quote or representative sentence 1", "Direct quote or representative sentence 2"]
   }
 }`;
 
 const contractualObligationsInstructions = `
   Summarize significant contractual obligations and commitments.
   Categorize by type (e.g., Operating Leases, Purchase Obligations, Debt) and provide total amounts and timing.
-  Include information on off-balance sheet arrangements and a relevant excerpt.
+  Include information on off-balance sheet arrangements.
+  **CRITICAL: Extract a direct, concise excerpt (1-3 sentences) that summarizes or provides a key detail about contractual obligations or off-balance sheet arrangements. Prioritize direct quotes.**
 `;
 const contractualObligationsSchemaFragment = `{
   "contractualObligations": {
@@ -245,14 +248,14 @@ const contractualObligationsSchemaFragment = `{
       }
     ],
     "offBalanceSheet": "Off-balance sheet details.",
-    "excerpt": "Contractual obligations excerpt."
+    "excerpt": "Direct quote or representative sentence for contractual obligations."
   }
 }`;
 
 const keyTakeawaysInstructions = `
   Provide overall key takeaways from the MD&A.
   Identify strengths, challenges, assess management's tone (e.g., Optimistic, Cautious), and list investor considerations.
-  Collect relevant excerpts that summarize these takeaways.
+  **CRITICAL: Extract 1-2 direct, highly relevant excerpts (1-3 sentences each) that best summarize the overall strengths, challenges, or key investor considerations from the MD&A. Prioritize direct quotes.**
 `;
 const keyTakeawaysSchemaFragment = `{
   "keyTakeaways": {
@@ -260,7 +263,7 @@ const keyTakeawaysSchemaFragment = `{
     "challenges": ["Challenge 1"],
     "managementTone": "Optimistic",
     "investorConsiderations": ["Consideration 1"],
-    "excerpts": ["Key takeaways excerpt."]
+    "excerpts": ["Direct quote or representative sentence 1", "Direct quote or representative sentence 2"]
   }
 }`;
 
