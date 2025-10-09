@@ -3,247 +3,436 @@ import { z } from "zod";
 import OpenAI from "openai";
 import { mdaAnalysisSchema, MDAAnalysis } from "../schemas/mdaAnalysisSchema";
 
-const MAX_MDNA_CHUNK_SIZE_TOKENS = 25000; // Güvenli bir chunk boyutu belirleyin
+const MAX_MDNA_CHUNK_SIZE_TOKENS = 25000; // Güvenli bir chunk boyutu belirleyin, GPT-4o 128k destekler, ancak güvenlik için daha küçük tutulabilir.
 
 async function countTokens(str: string): Promise<number> {
-  // Basit bir tahmin. Daha doğru bir token sayımı için bir kütüphane kullanılabilir.
+  // Basit bir tahmin. Daha doğru bir token sayımı için 'gpt-tokenizer' gibi bir kütüphane kullanılabilir.
+  // Örneğin: import { encode } from 'gpt-tokenizer'; return encode(str).length;
   return Math.ceil(str.length / 4);
 }
 
+// Prompt oluşturucu helper fonksiyonları
+interface SectionPromptConfig {
+  sectionName: string;
+  instructions: string;
+  schemaFragment: string; // JSON şema yapısının bir parçası
+}
+
+const createSectionPrompt = (
+  sectionConfig: SectionPromptConfig,
+  chunkText: string,
+  companyName: string
+) => `
+  Analyze the following text from the Management's Discussion and Analysis (MD&A) section for ${
+    companyName || "the company"
+  }.
+  Your task is to extract information specifically for the **${
+    sectionConfig.sectionName
+  }** section based on the provided instructions.
+
+  ${sectionConfig.instructions}
+
+  Return the extracted information as a JSON object that strictly adheres to the following structure:
+  ${sectionConfig.schemaFragment}
+
+  Text to analyze:
+  \`\`\`
+  ${chunkText}
+  \`\`\`
+
+  Return JSON.
+  `;
+
+// Zod şemanızdan JSON şema fragmanlarını manuel olarak veya bir araçla çıkarmanız gerekebilir.
+// Basitlik adına, burada manuel olarak yazacağım.
+const businessOverviewInstructions = `
+  Extract the executive summary, business description, key strategies, competitive strengths, operating segments, and recent developments.
+  Provide summaries for each, and for recent developments, specify event, impact, and date if available.
+  Collect any relevant excerpts that support the overall business overview.
+`;
+const businessOverviewSchemaFragment = `{
+  "businessOverview": {
+    "executiveSummary": "Summary of business, max 5 sentences.",
+    "businessDescription": "Brief description of the company's core business.",
+    "keyStrategies": ["Strategy 1", "Strategy 2"],
+    "competitiveStrengths": ["Strength 1", "Strength 2"],
+    "operatingSegments": [
+      { "name": "Segment A", "description": "Description", "revenueContribution": "X%" }
+    ],
+    "recentDevelopments": [
+      { "event": "Event 1", "impact": "Impact 1", "date": "YYYY-MM-DD" }
+    ],
+    "excerpts": ["Relevant excerpt 1", "Relevant excerpt 2"]
+  }
+}`;
+
+const currentPeriodHighlightsInstructions = `
+  Identify the fiscal year end, key achievements, challenges, and significant financial highlights for the current period.
+  Include specific metrics, values, and trends.
+  Provide a single, concise excerpt that summarizes the main highlights of the period.
+`;
+const currentPeriodHighlightsSchemaFragment = `{
+  "currentPeriodHighlights": {
+    "fiscalYearEnd": "YYYY-MM-DD",
+    "keyAchievements": ["Achievement 1", "Achievement 2"],
+    "challenges": ["Challenge 1", "Challenge 2"],
+    "financialHighlights": [
+      { "metric": "Revenue", "value": "$X", "trend": "Up/Down" }
+    ],
+    "excerpt": "A concise excerpt from the text."
+  }
+}`;
+
+const resultsOfOperationsInstructions = `
+  Perform a detailed analysis of the company's results of operations.
+  Include overall performance summary, revenue analysis (total, by segment, drivers, geographic), cost analysis (cost of revenue, gross margin, operating expenses breakdown, cost drivers), and profitability analysis (operating income, net income, margins).
+  Also include store metrics if applicable, and any comparative tables.
+  Extract relevant excerpts for each sub-section where possible.
+`;
+const resultsOfOperationsSchemaFragment = `{
+  "resultsOfOperations": {
+    "overallPerformance": {
+      "summary": "Overall performance summary.",
+      "keyPoints": ["Key point 1"],
+      "excerpts": ["Excerpt 1"]
+    },
+    "revenueAnalysis": {
+      "totalRevenue": {
+        "currentPeriod": {"value": "$X", "period": "YYYY"},
+        "priorPeriod": {"value": "$Y", "period": "YYYY"},
+        "change": {"absolute": "$Z", "percentage": "P%"},
+        "commentary": "Revenue commentary.",
+        "excerpt": "Relevant revenue excerpt."
+      },
+      "revenueBySegment": [
+        { "segmentName": "Segment A", "revenue": {"currentPeriod": {"value": "$X", "period": "YYYY"}}}
+      ],
+      "revenueDrivers": [{"driver": "Driver 1", "impact": "Impact 1"}],
+      "geographicRevenue": [{"region": "Region A", "revenue": "$X"}],
+      "excerpts": ["Revenue analysis excerpt."]
+    },
+    "costAnalysis": { /* Similar structure to revenueAnalysis for costs */
+      "costOfRevenue": { /* financialMetricSchema */ },
+      "grossMargin": { /* financialMetricSchema */ },
+      "operatingExpenses": {
+        "total": { /* financialMetricSchema */ },
+        "breakdown": [ { "category": "SG&A", "amount": "$X" } ]
+      },
+      "costDrivers": ["Driver 1"],
+      "efficiencyMeasures": ["Measure 1"],
+      "excerpts": ["Cost analysis excerpt."]
+    },
+    "profitabilityAnalysis": { /* Similar structure for profitability */
+      "operatingIncome": { /* financialMetricSchema */ },
+      "netIncome": { /* financialMetricSchema */ },
+      "margins": { "grossMargin": "X%", "operatingMargin": "Y%", "netMargin": "Z%" },
+      "nonGAAPReconciliation": [{"item": "Item 1", "amount": "$X"}],
+      "excerpts": ["Profitability analysis excerpt."]
+    },
+    "storeMetrics": { /* storeMetricsSchema */ },
+    "comparativeTables": [
+      {
+        "tableName": "Table 1",
+        "metrics": [{"item": "Item A", "currentYear": "$X", "priorYear": "$Y"}],
+        "footnotes": ["Footnote 1"]
+      }
+    ]
+  }
+}`;
+
+const liquidityAndCapitalResourcesInstructions = `
+  Analyze the company's liquidity and capital resources.
+  Cover cash position, detailed cash flow analysis (operating, investing, financing), capital structure (debt, equity, credit facilities, covenants), and future capital needs with funding strategies and commitments.
+  Include specific amounts, trends, and relevant excerpts.
+`;
+const liquidityAndCapitalResourcesSchemaFragment = `{
+  "liquidityAndCapitalResources": {
+    "cashPosition": {
+      "currentCash": "$X",
+      "narrative": "Narrative summary.",
+      "excerpt": "Relevant excerpt."
+    },
+    "cashFlowAnalysis": {
+      "operatingActivities": {"amount": "$X", "keyDrivers": ["Driver 1"]},
+      "investingActivities": {"amount": "$X", "majorInvestments": [{"description": "Investment 1"}]},
+      "financingActivities": {"amount": "$X", "debtActivity": "$Y"},
+      "excerpts": ["Cash flow excerpt."]
+    },
+    "capitalStructure": {
+      "totalDebt": "$X",
+      "creditFacilities": [{"facility": "Facility 1", "available": "$Y"}],
+      "excerpt": "Capital structure excerpt."
+    },
+    "futureCapitalNeeds": {
+      "anticipatedNeeds": ["Need 1"],
+      "fundingSources": ["Source 1"],
+      "commitments": [{"type": "Type 1", "amount": "$X"}],
+      "excerpt": "Future capital needs excerpt."
+    }
+  }
+}`;
+
+const marketTrendsAndOutlookInstructions = `
+  Discuss industry trends, the competitive landscape, the regulatory environment (issues, impact, management response), and economic factors (factor, current impact, expected impact).
+  Collect relevant excerpts for this section.
+`;
+const marketTrendsAndOutlookSchemaFragment = `{
+  "marketTrendsAndOutlook": {
+    "industryTrends": ["Trend 1", "Trend 2"],
+    "competitiveLandscape": "Description of competitive landscape.",
+    "regulatoryEnvironment": [
+      { "issue": "Issue 1", "impact": "Impact 1" }
+    ],
+    "economicFactors": [
+      { "factor": "Inflation", "currentImpact": "Impact" }
+    ],
+    "excerpts": ["Market trends excerpt."]
+  }
+}`;
+
+const criticalAccountingPoliciesInstructions = `
+  Identify 2-4 critical accounting policies or estimates.
+  For each policy, provide its name, a description, key assumptions, and any sensitivity analysis.
+  Include a direct excerpt for each policy.
+`;
+const criticalAccountingPoliciesSchemaFragment = `{
+  "criticalAccountingPolicies": [
+    {
+      "policyName": "Policy 1",
+      "description": "Description of policy.",
+      "keyAssumptions": ["Assumption 1"],
+      "sensitivityAnalysis": "Sensitivity details.",
+      "excerpt": "Policy 1 excerpt."
+    }
+  ]
+}`;
+
+const knownTrendsAndUncertaintiesInstructions = `
+  Identify significant known trends, uncertainties, and opportunities.
+  For each, describe its nature, potential impact/benefit, and mitigation strategy.
+  Include forward-looking statements (guidance, strategic initiatives, cautionary note) and relevant excerpts.
+`;
+const knownTrendsAndUncertaintiesSchemaFragment = `{
+  "knownTrendsAndUncertainties": {
+    "opportunities": [
+      { "description": "Opportunity 1", "potentialImpact": "Impact 1" }
+    ],
+    "risks": [
+      { "description": "Risk 1", "potentialImpact": "Impact 1" }
+    ],
+    "forwardLookingStatements": {
+      "guidance": [{"metric": "Revenue", "target": "$X"}],
+      "strategicInitiatives": ["Initiative 1"],
+      "cautionaryNote": "Cautionary note."
+    },
+    "excerpts": ["Known trends excerpt."]
+  }
+}`;
+
+const contractualObligationsInstructions = `
+  Summarize significant contractual obligations and commitments.
+  Categorize by type (e.g., Operating Leases, Purchase Obligations, Debt) and provide total amounts and timing.
+  Include information on off-balance sheet arrangements and a relevant excerpt.
+`;
+const contractualObligationsSchemaFragment = `{
+  "contractualObligations": {
+    "summary": "Summary of obligations.",
+    "obligations": [
+      {
+        "type": "Operating Leases",
+        "total": "$X",
+        "timing": {"within1Year": "$Y", "years1to3": "$Z"}
+      }
+    ],
+    "offBalanceSheet": "Off-balance sheet details.",
+    "excerpt": "Contractual obligations excerpt."
+  }
+}`;
+
+const keyTakeawaysInstructions = `
+  Provide overall key takeaways from the MD&A.
+  Identify strengths, challenges, assess management's tone (e.g., Optimistic, Cautious), and list investor considerations.
+  Collect relevant excerpts that summarize these takeaways.
+`;
+const keyTakeawaysSchemaFragment = `{
+  "keyTakeaways": {
+    "strengths": ["Strength 1"],
+    "challenges": ["Challenge 1"],
+    "managementTone": "Optimistic",
+    "investorConsiderations": ["Consideration 1"],
+    "excerpts": ["Key takeaways excerpt."]
+  }
+}`;
+
+// Tüm bölümlerin bir listesi
+const mdaSectionsConfig: SectionPromptConfig[] = [
+  {
+    sectionName: "Business Overview",
+    instructions: businessOverviewInstructions,
+    schemaFragment: businessOverviewSchemaFragment,
+  },
+  {
+    sectionName: "Current Period Highlights",
+    instructions: currentPeriodHighlightsInstructions,
+    schemaFragment: currentPeriodHighlightsSchemaFragment,
+  },
+  {
+    sectionName: "Results of Operations",
+    instructions: resultsOfOperationsInstructions,
+    schemaFragment: resultsOfOperationsSchemaFragment,
+  },
+  {
+    sectionName: "Liquidity and Capital Resources",
+    instructions: liquidityAndCapitalResourcesInstructions,
+    schemaFragment: liquidityAndCapitalResourcesSchemaFragment,
+  },
+  {
+    sectionName: "Market Trends and Business Environment",
+    instructions: marketTrendsAndOutlookInstructions,
+    schemaFragment: marketTrendsAndOutlookSchemaFragment,
+  },
+  {
+    sectionName: "Critical Accounting Policies",
+    instructions: criticalAccountingPoliciesInstructions,
+    schemaFragment: criticalAccountingPoliciesSchemaFragment,
+  },
+  {
+    sectionName: "Known Trends, Uncertainties, and Forward-Looking Statements",
+    instructions: knownTrendsAndUncertaintiesInstructions,
+    schemaFragment: knownTrendsAndUncertaintiesSchemaFragment,
+  },
+  {
+    sectionName: "Contractual Obligations and Commitments",
+    instructions: contractualObligationsInstructions,
+    schemaFragment: contractualObligationsSchemaFragment,
+  },
+  {
+    sectionName: "Overall MD&A Takeaways",
+    instructions: keyTakeawaysInstructions,
+    schemaFragment: keyTakeawaysSchemaFragment,
+  },
+];
+
+// Ana analiz fonksiyonu
 export async function analyzeMdnaSection(
   text: string,
   openai: OpenAI,
   companyName: string
 ): Promise<MDAAnalysis | null> {
-  const basePrompt = (
-    chunkText: string
-  ) => `Analyze the Management's Discussion and Analysis (MD&A) section for the company ${
-    companyName || "the company"
-  } in detail.
-  Extract the following comprehensive information, providing specific numbers, percentages, and years where available.
-
-  For the **Executive Summary**, **Future Capital Needs & Funding Strategies**, **Critical Accounting Policies**, **Off-Balance Sheet Arrangements**, and **Known Trends, Uncertainties, and Opportunities** sections, provide a concise, 1-2 sentence 'excerpt' directly from the text that explicitly supports or introduces the key information in that section. This excerpt will be used for verification purposes. For other sections, provide the detailed analysis without an excerpt.
-
-  1.  **Executive Summary of Operations and Financial Condition:** Provide a narrative summary (4-6 sentences) of the company's financial performance (revenues, profitability, key drivers of change) and financial condition (liquidity, capital resources) for the most recent periods presented. Include actual numbers and year-over-year comparisons.
-  2.  **Results of Operations - Detailed Analysis:**
-      *   **Revenue Analysis:** Describe key factors and trends influencing revenue (e.g., product mix, pricing, volume, geographic performance). Include specific numbers and growth rates.
-      *   **Cost of Sales/Gross Profit Analysis:** Explain significant changes in cost of sales and gross profit margins.
-      *   **Operating Expenses Analysis:** Detail major changes and drivers in operating expenses (e.g., R&D, SG&A) and their impact on profitability.
-      *   **Other Income/Expense:** Summarize any material non-operating income or expenses. If none are reported, state 'None reported'.
-      *   **Segment Information (if applicable):** If the company reports segment data, analyze the performance of each major segment (revenue, profit, key trends). State 'Not applicable' if not reported.
-  3.  **Liquidity and Capital Resources:**
-      *   **Current Liquidity:** Summarize the company's short-term liquidity, including cash and equivalents, working capital, and operating cash flows. Provide relevant figures and trends.
-      *   **Capital Resources:** Describe the company's long-term capital structure, significant debt obligations, and access to capital markets. Detail any material debt covenants or restrictions.
-      *   **Cash Flow Analysis:** Briefly analyze cash flows from operating, investing, and financing activities, highlighting major uses and sources of cash.
-      *   **Future Capital Needs & Funding Strategies:** Identify any stated future capital expenditure plans (CAPEX), significant funding needs, and the company's strategies to meet these needs (e.g., debt, equity, internal cash generation). If none are reported, state 'None reported'.
-  4.  **Critical Accounting Policies and Estimates:**
-      *   Identify 2-4 of the most critical accounting policies or estimates that require management's subjective judgment and could have a material impact on financial results.
-      *   Briefly explain why these policies are considered critical and the nature of the estimation uncertainty, including potential impacts of different assumptions.
-  5.  **Off-Balance Sheet Arrangements:** Describe any material off-balance sheet arrangements (e.g., guarantees, securitized assets, unconsolidated entities, VIEs) and their potential impact on liquidity, capital resources, or results of operations. If none are reported, state 'None reported'.
-  6.  **Contractual Obligations and Commercial Commitments:**
-      *   Summarize significant contractual obligations (e.g., lease commitments, purchase obligations, long-term debt principal payments) and their timing. If no material obligations are discussed, state 'None reported'.
-  7.  **Known Trends, Uncertainties, and Opportunities:**
-      *   Identify 3-5 significant known trends, demands, commitments, events, uncertainties, **or opportunities** that are reasonably likely to have a material effect on the company's future financial condition or operating results.
-      *   For each, briefly describe its nature and potential impact/benefit, and any management responses or mitigation strategies.
-  8.  **Inflation and Changing Prices:**
-      *   Discuss any material impact of inflation or changing prices on the company's operations and financial results, and management's strategies to mitigate these effects. If not discussed, state 'Not discussed'.
-  9.  **Strategic Outlook and Future Plans:**
-      *   Summarize the company's strategic vision, significant future plans (e.g., expansion, new products, strategic initiatives, market entries, M&A), and expected challenges as discussed by management.
-      *   Mention any identified forward-looking statements or risks associated with them, but also highlight potential benefits and growth drivers of these plans.
-
-  Text: ${chunkText}
-
-  Return JSON.
-  {
-    "title": "Comprehensive Management's Discussion and Analysis",
-    "executiveSummary": {
-      "analysis": "A 4-6 sentence narrative summary of financial performance and condition with specific numbers and comparisons.",
-      "excerpt": "A 1-2 sentence supporting excerpt from the text."
-    },
-    "resultsOfOperations": {
-      "revenueAnalysis": "Detailed analysis of revenue changes and drivers with numbers.",
-      "costOfSalesAnalysis": "Explanation of changes in COGS and gross margins.",
-      "operatingExpensesAnalysis": "Analysis of operating expense changes and impact on profitability.",
-      "otherIncomeExpense": "Summary of material non-operating items or 'None reported'.",
-      "segmentInformation": "Performance analysis of major segments or 'Not applicable'."
-    },
-    "liquidityAndCapitalResources": {
-      "currentLiquidity": "Summary of short-term liquidity with figures and trends.",
-      "capitalResources": "Description of long-term capital structure, debt, and covenants.",
-      "cashFlowAnalysis": "Brief analysis of operating, investing, and financing cash flows.",
-      "futureCapitalNeedsAndFundingStrategies": {
-        "analysis": "Identified future CAPEX, funding needs, and strategies or 'None reported'.",
-        "excerpt": "A 1-2 sentence supporting excerpt from the text or 'None reported'."
-      }
-    },
-    "criticalAccountingPolicies": [
-      {
-        "policyName": "Name of policy",
-        "explanation": "Why it's critical and estimation uncertainty, including potential impacts.",
-        "excerpt": "A 1-2 sentence supporting excerpt from the text."
-      }
-    ],
-    "offBalanceSheetArrangements": {
-      "analysis": "Description of arrangements and their potential impact or 'None reported'.",
-      "excerpt": "A 1-2 sentence supporting excerpt from the text or 'None reported'."
-    },
-    "contractualObligationsAndCommercialCommitments": "Summary of significant contractual obligations and timing or 'None reported'.",
-    "knownTrendsUncertaintiesOpportunities": [
-      {
-        "itemDescription": "Description of trend, uncertainty, or opportunity.",
-        "impactBenefit": "Potential material effect/benefit and management response.",
-        "excerpt": "A 1-2 sentence supporting excerpt from the text."
-      }
-    ],
-    "inflationAndChangingPrices": "Impact of inflation/changing prices and mitigation strategies or 'Not discussed'.",
-    "strategicOutlookAndFuturePlans": "Summary of company's strategic vision, future plans, benefits, and challenges."
-  }`;
-
-  let fullAnalysis: Partial<MDAAnalysis> = {}; // Parsiyel birleştirme için
+  let fullAnalysis: Partial<MDAAnalysis> = {
+    title: "Management's Discussion and Analysis",
+  };
 
   const textTokens = await countTokens(text);
   console.log(`[analyzeMdnaSection] MD&A section total tokens: ${textTokens}`);
 
-  if (textTokens > MAX_MDNA_CHUNK_SIZE_TOKENS) {
-    console.log(
-      `[analyzeMdnaSection] MD&A section is too long (${textTokens} tokens). Splitting into chunks.`
-    );
-    const sentences = text.split(/(?<=\.)\s+|\n\n/);
-    let currentChunk = "";
-    const chunks: string[] = [];
-
-    for (const sentence of sentences) {
-      if (
-        (await countTokens(currentChunk + sentence)) <
-        MAX_MDNA_CHUNK_SIZE_TOKENS
-      ) {
-        currentChunk += (currentChunk ? " " : "") + sentence.trim();
-      } else {
-        if (currentChunk) chunks.push(currentChunk);
-        currentChunk = sentence.trim();
-      }
-    }
-    if (currentChunk) chunks.push(currentChunk);
-
-    console.log(
-      `[analyzeMdnaSection] Created ${chunks.length} chunks for MD&A analysis.`
-    );
-
-    for (let i = 0; i < chunks.length; i++) {
-      const chunk = chunks[i];
-      console.log(
-        `[analyzeMdnaSection] Processing chunk ${i + 1}/${chunks.length}...`
-      );
-      const chunkPrompt = basePrompt(chunk);
-
-      try {
-        // !!! Burada OpenAI hız limitini zorunlu kılınacak !!!
-        const result = await openai.chat.completions.create({
-          model: "gpt-4o",
-          messages: [{ role: "user", content: chunkPrompt }],
-          response_format: { type: "json_object" },
-          temperature: 0.1,
-        });
-
-        const rawParsedContent = JSON.parse(
-          result.choices[0].message.content || "{}"
-        );
-        console.log(
-          `[analyzeMdnaSection] Chunk ${i + 1} raw response content:`,
-          JSON.stringify(rawParsedContent, null, 2)
-        );
-
-        // İlk chunk'ı temel al, sonraki chunk'lardan özellikle listeleri birleştir
-        if (i === 0) {
-          fullAnalysis = rawParsedContent;
-        } else {
-          // Önemli: Bu birleştirme mantığı, MDAAnalysis yapısına ve hangi bilgilerin tekrarlanabileceğine/birleştirileceğine bağlıdır.
-          // Örneğin, `knownTrendsUncertaintiesOpportunities` gibi listeleri birleştirebiliriz.
-          if (
-            rawParsedContent.knownTrendsUncertaintiesOpportunities &&
-            Array.isArray(
-              rawParsedContent.knownTrendsUncertaintiesOpportunities
-            )
-          ) {
-            if (!fullAnalysis.knownTrendsUncertaintiesOpportunities) {
-              fullAnalysis.knownTrendsUncertaintiesOpportunities = [];
-            }
-            fullAnalysis.knownTrendsUncertaintiesOpportunities = [
-              ...(fullAnalysis.knownTrendsUncertaintiesOpportunities || []),
-              ...rawParsedContent.knownTrendsUncertaintiesOpportunities.filter(
-                (item: any) =>
-                  item.itemDescription !== "No description available."
-              ), // Varsayılanları filtrele
-            ];
-          }
-          // Critical Accounting Policies için de benzer birleştirme yapılabilir
-          if (
-            rawParsedContent.criticalAccountingPolicies &&
-            Array.isArray(rawParsedContent.criticalAccountingPolicies)
-          ) {
-            if (!fullAnalysis.criticalAccountingPolicies) {
-              fullAnalysis.criticalAccountingPolicies = [];
-            }
-            fullAnalysis.criticalAccountingPolicies = [
-              ...(fullAnalysis.criticalAccountingPolicies || []),
-              ...rawParsedContent.criticalAccountingPolicies.filter(
-                (item: any) => item.policyName !== "No policy identified."
-              ),
-            ];
-          }
-          // Diğer tekil alanlar için (executiveSummary, resultsOfOperations vb.) genellikle ilk chunk'ın daha kapsamlı olmasını bekleriz
-          // Bu alanları birleştirmek yerine, ilk chunk'ı öncelikli tutmak daha mantıklı olabilir veya daha gelişmiş bir birleştirme stratejisi tasarlamanız gerekebilir.
-        }
-      } catch (chunkError) {
-        console.error(
-          `[analyzeMdnaSection] Error processing MD&A chunk ${i + 1}:`,
-          chunkError
-        );
-      }
-    }
-  } else {
-    console.log(
-      "[analyzeMdnaSection] MD&A section is within token limits. Analyzing directly."
-    );
-    const prompt = basePrompt(text);
-    // !!! Burada OpenAI hız limitini zorunlu kılınacak !!!
-    const result = await openai.chat.completions.create({
-      model: "gpt-4o",
-      messages: [{ role: "user", content: prompt }],
-      response_format: { type: "json_object" },
-      temperature: 0.1,
-    });
-    fullAnalysis = JSON.parse(result.choices[0].message.content || "{}");
-    console.log(
-      "[analyzeMdnaSection] Direct analysis raw response content:",
-      JSON.stringify(fullAnalysis, null, 2)
+  // Metni daha küçük parçalara bölmek yerine, her bir bölüm için tüm metni gönderiyoruz.
+  // Modelin uzun metinleri işleme yeteneği sayesinde bu genellikle daha iyi sonuç verir.
+  // Ancak, MAX_MDNA_CHUNK_SIZE_TOKENS'ı aşarsa, bu yaklaşım çalışmayacaktır.
+  // Daha büyük metinler için, her bir sub-prompt için metni chunk'lara bölmek ve sonra birleştirmek gerekebilir.
+  // Mevcut MAX_MDNA_CHUNK_SIZE_TOKENS 25000 olduğundan, tüm metni tek seferde göndermek daha kolay olacaktır.
+  // Eğer metin bu sınırı aşarsa, her bölüm için de chunking mantığı uygulanmalıdır.
+  if (textTokens > MAX_MDNA_CHUNK_SIZE_TOKENS && textTokens > 100000) {
+    // Çok uzun metinler için uyarı
+    console.warn(
+      `[analyzeMdnaSection] Warning: MD&A section is very long (${textTokens} tokens). Sending full text for each section might hit rate limits or context window limits. Consider more granular chunking per section or increasing MAX_MDNA_CHUNK_SIZE_TOKENS if using a model with larger context.`
     );
   }
 
+  for (const sectionConfig of mdaSectionsConfig) {
+    console.log(
+      `[analyzeMdnaSection] Analyzing section: ${sectionConfig.sectionName}`
+    );
+    const sectionPrompt = createSectionPrompt(
+      sectionConfig,
+      text, // Tüm metni her bölüm için gönderiyoruz
+      companyName
+    );
+
+    try {
+      const result = await openai.chat.completions.create({
+        model: "gpt-4o", // GPT-4o'nun 128k context'i var
+        messages: [{ role: "user", content: sectionPrompt }],
+        response_format: { type: "json_object" },
+        temperature: 0.1,
+      });
+
+      const rawParsedContent = JSON.parse(
+        result.choices[0].message.content || "{}"
+      );
+      console.log(
+        `[analyzeMdnaSection] Raw response for ${sectionConfig.sectionName}:`,
+        JSON.stringify(rawParsedContent, null, 2)
+      );
+
+      // Gelen içeriği doğrudan fullAnalysis objesine atayalım.
+      // Her prompt, ana şemanın bir bölümünü döndüreceği için (örn. {"businessOverview": {...}})
+      // bu doğrudan atama işe yarar.
+      Object.assign(fullAnalysis, rawParsedContent);
+    } catch (sectionError) {
+      console.error(
+        `[analyzeMdnaSection] Error processing section ${sectionConfig.sectionName}:`,
+        sectionError
+      );
+      // Hata durumunda ilgili bölüm boş veya varsayılan değerlerle kalacaktır.
+    }
+  }
+
   try {
-    console.log("[analyzeMdnaSection] Attempting Zod validation...");
+    console.log(
+      "[analyzeMdnaSection] Attempting Zod validation for full analysis..."
+    );
     const validatedContent = mdaAnalysisSchema.parse(fullAnalysis);
+    console.log(
+      "[analyzeMdnaSection] Zod validation successful for full analysis."
+    );
 
     // Listeleri deduplicate etme (knownTrendsUncertaintiesOpportunities, criticalAccountingPolicies)
-    if (validatedContent.knownTrendsUncertaintiesOpportunities) {
-      const uniqueTrends = new Map();
-      validatedContent.knownTrendsUncertaintiesOpportunities.forEach((item) => {
+    // Bu deduplicate mantığı, her bölümün kendi prompt'undan tekil listeler gelmesini varsayar.
+    // Eğer farklı bölümler aynı tipte listeler döndürüyorsa, daha karmaşık bir birleştirme gerekir.
+    if (validatedContent.knownTrendsAndUncertainties?.risks) {
+      const uniqueRisks = new Map();
+      validatedContent.knownTrendsAndUncertainties.risks.forEach((item) => {
         if (
-          item.itemDescription &&
-          item.itemDescription !== "No description available."
+          item.description &&
+          item.description !== "No description available."
         ) {
-          uniqueTrends.set(item.itemDescription, item);
+          uniqueRisks.set(item.description, item);
         }
       });
-      validatedContent.knownTrendsUncertaintiesOpportunities = Array.from(
-        uniqueTrends.values()
+      validatedContent.knownTrendsAndUncertainties.risks = Array.from(
+        uniqueRisks.values()
       );
-      if (validatedContent.knownTrendsUncertaintiesOpportunities.length === 0) {
-        validatedContent.knownTrendsUncertaintiesOpportunities.push({
-          itemDescription:
-            "No specific known trends, uncertainties, or opportunities were identified in the text.",
-          impactBenefit: "N/A",
-          excerpt: "No direct excerpt found.",
+      if (validatedContent.knownTrendsAndUncertainties.risks.length === 0) {
+        validatedContent.knownTrendsAndUncertainties.risks.push({
+          description: "No specific risks were identified in the text.",
+          potentialImpact: "N/A",
+          mitigationStrategy: "N/A",
+        });
+      }
+    }
+    if (validatedContent.knownTrendsAndUncertainties?.opportunities) {
+      const uniqueOpportunities = new Map();
+      validatedContent.knownTrendsAndUncertainties.opportunities.forEach(
+        (item) => {
+          if (
+            item.description &&
+            item.description !== "No description available."
+          ) {
+            uniqueOpportunities.set(item.description, item);
+          }
+        }
+      );
+      validatedContent.knownTrendsAndUncertainties.opportunities = Array.from(
+        uniqueOpportunities.values()
+      );
+      if (
+        validatedContent.knownTrendsAndUncertainties.opportunities.length === 0
+      ) {
+        validatedContent.knownTrendsAndUncertainties.opportunities.push({
+          description: "No specific opportunities were identified in the text.",
+          potentialImpact: "N/A",
+          timeline: "N/A",
         });
       }
     }
@@ -251,7 +440,7 @@ export async function analyzeMdnaSection(
     if (validatedContent.criticalAccountingPolicies) {
       const uniquePolicies = new Map();
       validatedContent.criticalAccountingPolicies.forEach((item) => {
-        if (item.policyName && item.policyName !== "No policy identified.") {
+        if (item.policyName && item.policyName !== "None identified") {
           uniquePolicies.set(item.policyName, item);
         }
       });
@@ -261,25 +450,25 @@ export async function analyzeMdnaSection(
       if (validatedContent.criticalAccountingPolicies.length === 0) {
         validatedContent.criticalAccountingPolicies.push({
           policyName: "None identified",
-          explanation:
+          description:
             "No critical accounting policies requiring subjective judgment were explicitly highlighted in this section.",
+          keyAssumptions: [],
           excerpt: "No direct excerpt found.",
         });
       }
     }
 
-    console.log("[analyzeMdnaSection] Zod validation successful.");
     return validatedContent;
   } catch (error) {
     if (error instanceof z.ZodError) {
       console.error(
-        "[analyzeMdnaSection] Zod Validation Error:",
+        "[analyzeMdnaSection] Zod Validation Error for full analysis:",
         JSON.stringify(error.issues, null, 2)
       );
       return null;
     }
     console.error(
-      "[analyzeMdnaSection] Unexpected error during validation or processing:",
+      "[analyzeMdnaSection] Unexpected error during final validation or processing:",
       error
     );
     return null;

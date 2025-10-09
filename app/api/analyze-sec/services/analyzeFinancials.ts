@@ -1,12 +1,24 @@
+// services.ts - analyzeFinancialSection'ı güncelleyin
 import { z } from "zod";
 import OpenAI from "openai";
 import {
   financialAnalysisSchema,
   FinancialAnalysis,
 } from "../schemas/financialsAnalysisSchema"; // Doğru yolu ayarla
+import pLimit from "p-limit"; // p-limit'i import edin
 
-const MAX_TOKENS_FINANCIALS_GPT4O = 128000; // GPT-4o'nun bağlam penceresi. Güvenli bir üst sınır belirleyebiliriz.
+// Maksimum token limitleri
+const MAX_TOKENS_FINANCIALS_GPT4O = 128000; // GPT-4o'nun bağlam penceresi
 const MAX_CHUNK_SIZE_TOKENS = 25000; // Her bir chunk için daha düşük bir limit belirleyelim
+
+// Her bir OpenAI completion çağrısı için ayrı bir limiter tanımlayın.
+// Bu limiter, analyzeFinancialSection içinde her chunk için yapılan çağrıları yönetecek.
+// Bu değeri, OpenAI organizasyonunuzun TPM (Tokens Per Minute) ve RPM (Requests Per Minute) limitlerine göre ayarlayın.
+// Genel "route.ts" dosyasındaki OPENAI_CONCURRENT_REQUESTS ile uyumlu veya daha düşük olabilir.
+const ANALYZE_FINANCIAL_CONCURRENT_REQUESTS = 1; // analyzeFinancialSection içinde aynı anda maksimum 1 OpenAI isteği
+const financialSectionRequestLimiter = pLimit(
+  ANALYZE_FINANCIAL_CONCURRENT_REQUESTS
+);
 
 export async function analyzeFinancialSection(
   text: string,
@@ -219,6 +231,10 @@ export async function analyzeFinancialSection(
     `[analyzeFinancialSection] Financials section total tokens: ${textTokens}`
   );
 
+  // Chunking promises'ları bir diziye toplayın
+  const chunkAnalysisPromises: Promise<Partial<FinancialAnalysis> | null>[] =
+    [];
+
   if (textTokens > MAX_CHUNK_SIZE_TOKENS) {
     console.log(
       `[analyzeFinancialSection] Financials section is too long (${textTokens} tokens). Splitting into chunks.`
@@ -243,74 +259,95 @@ export async function analyzeFinancialSection(
 
     for (let i = 0; i < chunks.length; i++) {
       const chunk = chunks[i];
-      console.log(
-        `[analyzeFinancialSection] Processing chunk ${i + 1}/${
-          chunks.length
-        }...`
-      );
-      const chunkPrompt = promptTemplate(chunk);
+      chunkAnalysisPromises.push(
+        financialSectionRequestLimiter(async () => {
+          // Limiter ile sarmalayın
+          console.log(
+            `[analyzeFinancialSection] Processing chunk ${i + 1}/${
+              chunks.length
+            }...`
+          );
+          const chunkPrompt = promptTemplate(chunk);
 
-      try {
-        const result = await openai.chat.completions.create({
-          model: "gpt-4o",
-          messages: [{ role: "user", content: chunkPrompt }],
-          response_format: { type: "json_object" },
-          temperature: 0.1,
-        });
+          try {
+            const result = await openai.chat.completions.create({
+              model: "gpt-4o",
+              messages: [{ role: "user", content: chunkPrompt }],
+              response_format: { type: "json_object" },
+              temperature: 0.1,
+            });
 
-        const rawParsedContent = JSON.parse(
-          result.choices[0].message.content || "{}"
-        );
-        console.log(
-          `[analyzeFinancialSection] Chunk ${i + 1} raw response content:`,
-          JSON.stringify(rawParsedContent, null, 2)
-        );
-
-        if (i === 0) {
-          fullAnalysis = rawParsedContent;
-        } else {
-          // Merge noteworthy items from subsequent chunks
-          if (
-            rawParsedContent.noteworthyItemsImpacts &&
-            Array.isArray(rawParsedContent.noteworthyItemsImpacts)
-          ) {
-            if (!fullAnalysis.noteworthyItemsImpacts) {
-              fullAnalysis.noteworthyItemsImpacts = [];
-            }
-            const newItems = rawParsedContent.noteworthyItemsImpacts.filter(
-              (item: any) =>
-                item.type !== "none_identified" &&
-                item.description !== "None identified." &&
-                item.description !== "No description available."
+            const rawParsedContent = JSON.parse(
+              result.choices[0].message.content || "{}"
             );
-            fullAnalysis.noteworthyItemsImpacts = [
-              ...(fullAnalysis.noteworthyItemsImpacts || []),
-              ...newItems,
-            ];
+            console.log(
+              `[analyzeFinancialSection] Chunk ${i + 1} raw response content:`,
+              JSON.stringify(rawParsedContent, null, 2)
+            );
+            return rawParsedContent;
+          } catch (chunkError) {
+            console.error(
+              `[analyzeFinancialSection] Error processing financial chunk ${
+                i + 1
+              }:`,
+              chunkError
+            );
+            return null;
           }
-          // Diğer alanları birleştirme mantığı, ihtiyaca göre daha karmaşık hale getirilebilir.
-          // Şu an için ilk chunk'tan gelen veriler önceliklidir.
-        }
-      } catch (chunkError) {
-        console.error(
-          `[analyzeFinancialSection] Error processing financial chunk ${
-            i + 1
-          }:`,
-          chunkError
-        );
-      }
+        })
+      );
     }
+
+    // Tüm chunk analizlerinin tamamlanmasını bekleyin
+    const chunkResults = await Promise.all(chunkAnalysisPromises);
+
+    // Sonuçları birleştirin
+    chunkResults.forEach((rawParsedContent, i) => {
+      if (!rawParsedContent) return; // Hata veren chunk'ları atla
+
+      if (i === 0) {
+        fullAnalysis = rawParsedContent;
+      } else {
+        // Merge noteworthy items from subsequent chunks
+        if (
+          rawParsedContent.noteworthyItemsImpacts &&
+          Array.isArray(rawParsedContent.noteworthyItemsImpacts)
+        ) {
+          if (!fullAnalysis.noteworthyItemsImpacts) {
+            fullAnalysis.noteworthyItemsImpacts = [];
+          }
+          const newItems = rawParsedContent.noteworthyItemsImpacts.filter(
+            (item: any) =>
+              item.type !== "none_identified" &&
+              item.description !== "None identified." &&
+              item.description !== "No description available."
+          );
+          fullAnalysis.noteworthyItemsImpacts = [
+            ...(fullAnalysis.noteworthyItemsImpacts || []),
+            ...newItems,
+          ];
+        }
+        // Diğer alanları birleştirme mantığı, ihtiyaca göre daha karmaşık hale getirilebilir.
+        // Şu an için ilk chunk'tan gelen veriler önceliklidir.
+        // Örneğin, eğer bir sonraki chunk'ta daha güncel veya eksik bilgi varsa burada birleştirilebilir.
+        // Ancak, genellikle finansal analizde ilk chunk ana tablo ve özetleri içerirken,
+        // sonraki chunk'lar dipnotlar ve ek detaylar içerir.
+      }
+    });
   } else {
     console.log(
       "[analyzeFinancialSection] Financials section is within token limits. Analyzing directly."
     );
     const prompt = promptTemplate(text);
-    const result = await openai.chat.completions.create({
-      model: "gpt-4o",
-      messages: [{ role: "user", content: prompt }],
-      response_format: { type: "json_object" },
-      temperature: 0.1,
-    });
+    const result = await financialSectionRequestLimiter(() =>
+      // Limiter ile sarmalayın
+      openai.chat.completions.create({
+        model: "gpt-4o",
+        messages: [{ role: "user", content: prompt }],
+        response_format: { type: "json_object" },
+        temperature: 0.1,
+      })
+    );
     fullAnalysis = JSON.parse(result.choices[0].message.content || "{}");
     console.log(
       "[analyzeFinancialSection] Direct analysis raw response content:",
@@ -379,8 +416,6 @@ export async function analyzeFinancialSection(
     }
 
     // Key Insights Excerpt için kontrol
-    // Artık keyInsightsExcerpt zorunlu olduğu için, model bir şey döndürmezse Zod hata verecektir.
-    // Ancak yine de sağlamlık için ek bir kontrol (belki boş string döndürme durumuna karşı) ekleyebiliriz.
     if (
       !validatedContent.keyInsightsExcerpt ||
       validatedContent.keyInsightsExcerpt === "No direct excerpt found." ||
