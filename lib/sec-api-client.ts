@@ -139,14 +139,19 @@ export class SECApiClient {
       properties: "2",
       risk: "1A",
       legal: "3",
+      marketForEquity: "5",
       mdna: "7",
       marketRisk: "7A",
       financials: "8",
+      disagreementsWithAccountants: "9",
       controls: "9A",
+      otherInformation: "9B",
       directors: "10",
       compensation: "11",
       ownership: "12",
       relatedParty: "13",
+      principalAccountantFees: "14",
+      exhibits: "15", // Item 15'i de ekledik
     };
 
     const sections: Record<string, { text: string; html: string }> = {};
@@ -167,6 +172,31 @@ export class SECApiClient {
         sections[key] = { text: "", html: "" };
       }
     }
+
+    // Finansal bilgileri hem Item 8'den hem de Item 15'ten birleştirebiliriz.
+    // SEC API'nin extractor'ı "Item 8" olarak istediğimizde bazen "Item 15(a)(1)" içeriğini de dönebilir.
+    // Ancak daha güvenli olmak için ikisini de alıp birleştirmek iyi bir stratejidir.
+    if (sections.financials?.text && sections.exhibits?.text) {
+      // Eğer Item 8'den ve Item 15'ten alınan finansal bilgiler varsa, bunları birleştirelim.
+      // Tekrar eden kısımları ele almak için basit bir kontrol yapılabilir.
+      // Burada basitçe birleştiriyoruz, daha gelişmiş bir deduplication gerekebilir.
+      const combinedFinancials = `${sections.financials.text}\n\n${sections.exhibits.text}`;
+      sections.financials.text = combinedFinancials;
+      console.log(
+        `   ✓ Financials combined from Item 8 and Item 15: ${combinedFinancials.length} chars`
+      );
+    } else if (sections.exhibits?.text && !sections.financials?.text) {
+      // Sadece Item 15'te varsa, onu kullanalım
+      sections.financials = sections.exhibits;
+      console.log(
+        `   ✓ Financials derived from Item 15: ${sections.financials.text.length} chars`
+      );
+    }
+    // Eğer sadece Item 8 varsa, o zaten `sections.financials` içinde olacak.
+
+    // İşimiz biten `exhibits` bölümünü (eğer finansal veriler için kullandıysak) boşaltabiliriz veya ayrı bir kategori olarak tutmaya devam edebiliriz.
+    // Şu anki senaryoda, financials'ı birleştirdikten sonra exhibits'i ayrı tutmak mantıklı olabilir, çünkü içinde başka ekler de olabilir.
+    // Ancak analiz tarafında financials'ı kullanacağımız için bu birleştirme yeterli.
 
     console.log(`✅ All sections extraction complete`);
     return sections;

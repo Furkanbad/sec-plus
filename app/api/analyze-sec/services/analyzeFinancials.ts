@@ -6,7 +6,7 @@ import {
 } from "../schemas/financialsAnalysisSchema"; // Doğru yolu ayarla
 
 const MAX_TOKENS_FINANCIALS_GPT4O = 128000; // GPT-4o'nun bağlam penceresi. Güvenli bir üst sınır belirleyebiliriz.
-const MAX_CHUNK_SIZE_TOKENS = 60000; // Her bir chunk için daha düşük bir limit belirleyelim
+const MAX_CHUNK_SIZE_TOKENS = 25000; // Her bir chunk için daha düşük bir limit belirleyelim
 
 export async function analyzeFinancialSection(
   text: string,

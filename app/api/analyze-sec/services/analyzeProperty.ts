@@ -24,7 +24,7 @@ export async function analyzePropertySection(
           *   **Type:** (e.g., Office, Manufacturing Plant, Retail Store, Data Center)
           *   **Location:** (e.g., City, State, Country)
           *   **Size (if available):** (e.g., square footage, acreage)
-          *   **Status:** (Owned / Leased / Mixed / Not specified)
+          *   **Status:** IMPORTANT - Use EXACTLY one of these four values: "Owned", "Leased", "Mixed", or "Not specified"
           *   **Primary Use:** (e.g., Corporate Headquarters, Production, R&D, Distribution, Retail Sales)
           *   **Capacity (if relevant):** (e.g., production capacity, storage capacity)
           *   **Notes:** Any other relevant details about the property.
@@ -37,12 +37,15 @@ export async function analyzePropertySection(
 
   Text: ${text}
 
-  Return JSON:
+  Return JSON. CRITICAL: For the "status" field, you MUST use EXACTLY one of these four values: "Owned", "Leased", "Mixed", "Not specified". Do not use any other variations like "Owned/Leased", "Own", "Lease", etc.
+  
+  For "ownershipType", use EXACTLY one of: "Primarily Owned", "Primarily Leased", "Mixed", "Not specified".
+  
   {
     "title": "Properties Analysis",
     "propertiesOverview": {
       "summary": "General summary of property types, uses, and geographic distribution.",
-      "ownershipType": "Primarily Owned / Primarily Leased / Mixed / Not specified.",
+      "ownershipType": "Primarily Owned", "Primarily Leased", "Mixed", or "Not specified",
       "excerpt": "A 1-3 sentence supporting excerpt from the text that best summarizes the properties overview."
     },
     "keyProperties": [
@@ -50,7 +53,7 @@ export async function analyzePropertySection(
         "type": "Office / Manufacturing Plant / Retail Store / etc.",
         "location": "City, State, Country",
         "size": "e.g., 150,000 sq ft, 50 acres, 'Not disclosed'",
-        "status": "Owned / Leased / Mixed / Not specified",
+        "status": "Owned" OR "Leased" OR "Mixed" OR "Not specified",
         "primaryUse": "Corporate Headquarters / Production / R&D / etc.",
         "capacity": "e.g., 100,000 units/year, 'Not disclosed'",
         "notes": "Any other relevant details or 'None'."
@@ -84,9 +87,24 @@ export async function analyzePropertySection(
   } catch (error) {
     if (error instanceof z.ZodError) {
       console.error("Zod Validation Error in Property Section:", error.issues);
-      throw new Error(
-        `Property section analysis failed due to validation: ${error.message}`
-      );
+      // Validation hatası durumunda default değerlerle devam et
+      return {
+        title: "Properties Analysis",
+        propertiesOverview: {
+          summary:
+            "Property analysis could not be completed due to data issues.",
+          ownershipType: "Not specified",
+          excerpt: "No excerpt available.",
+        },
+        keyProperties: [],
+        propertyStrategyAndUtilization: {
+          strategy: "Not explicitly detailed.",
+          utilization: "Not explicitly detailed.",
+        },
+        keyTakeawaysConcerns: [
+          "Analysis could not be completed due to validation errors.",
+        ],
+      };
     }
     throw error;
   }

@@ -12,7 +12,18 @@ const keyPropertySchema = z.object({
   location: z.string().trim().default("Not specified"),
   size: z.string().trim().default("Not disclosed"),
   status: z
-    .enum(["Owned", "Leased", "Mixed", "Not specified"])
+    .string()
+    .trim()
+    .transform((val) => {
+      // LLM'den gelebilecek farklı değerleri normalize et
+      const lowerVal = val.toLowerCase();
+      if (lowerVal.includes("own")) return "Owned";
+      if (lowerVal.includes("lease") || lowerVal.includes("rent"))
+        return "Leased";
+      if (lowerVal.includes("mix") || lowerVal.includes("both")) return "Mixed";
+      // Tanımlanamayan veya boş değerler için
+      return "Not specified";
+    })
     .default("Not specified"),
   primaryUse: z.string().trim().default("Not specified"),
   capacity: z.string().trim().default("Not disclosed"),
@@ -25,7 +36,25 @@ export const propertyAnalysisSchema = z.object({
     .object({
       summary: z.string().trim().default("No general summary available."),
       ownershipType: z
-        .enum(["Primarily Owned", "Primarily Leased", "Mixed", "Not specified"])
+        .string()
+        .trim()
+        .transform((val) => {
+          // LLM'den gelebilecek farklı değerleri normalize et
+          const lowerVal = val.toLowerCase();
+          if (
+            lowerVal.includes("primarily owned") ||
+            lowerVal.includes("mostly owned")
+          )
+            return "Primarily Owned";
+          if (
+            lowerVal.includes("primarily leased") ||
+            lowerVal.includes("mostly leased")
+          )
+            return "Primarily Leased";
+          if (lowerVal.includes("mix") || lowerVal.includes("both"))
+            return "Mixed";
+          return "Not specified";
+        })
         .default("Not specified"),
       excerpt: excerptSchema,
     })

@@ -6,7 +6,17 @@ import { getOpenAIClient } from "@/utils/openai";
 
 import { SECAnalysis, SECFiling, SECSearchRequest } from "@/types/sec-analysis";
 
-import * as analyzeServices from "./services";
+import * as analyzeServices from "./services"; // Buradaki analyzeServices sizin analyzeFinancialSection ve analyzeMdnaSection'ı içeren dosyanız olmalı.
+
+// p-limit kütüphanesini import edin
+import pLimit from "p-limit";
+
+// OpenAI API istekleri için paralel limitleyici tanımlayın.
+// Bu değeri, OpenAI organizasyonunuzun TPM (Tokens Per Minute) ve RPM (Requests Per Minute) limitlerine göre ayarlayın.
+// gpt-4o için 30000 TPM limiti ve büyük context penceresi düşünüldüğünde, aynı anda 2-4 request genellikle güvenli bir başlangıç noktasıdır.
+// Daha yüksek limitleriniz varsa bu sayıyı artırabilirsiniz.
+const OPENAI_CONCURRENT_REQUESTS = 2; // Aynı anda maksimum 2 OpenAI isteği
+const openaiRequestLimiter = pLimit(OPENAI_CONCURRENT_REQUESTS);
 
 export async function POST(request: NextRequest) {
   try {
@@ -46,9 +56,28 @@ export async function POST(request: NextRequest) {
 
     const sectionsData = await secApiClient.getAllSections(filing);
 
+    console.log("📊 Section sizes:");
     Object.entries(sectionsData).forEach(([key, value]) => {
       console.log(`   ${key}: ${value.text.length} chars`);
     });
+
+    // DEBUG: Financials section'ı detaylı logla (Item 8 ve Item 15 birleşimi)
+    if (sectionsData.financials) {
+      console.log("\n🔍 FINANCIALS DEBUG:");
+      console.log("Length:", sectionsData.financials.text.length, "chars");
+      console.log(
+        "First 500 chars:",
+        sectionsData.financials.text.substring(0, 500)
+      );
+      console.log(
+        "Last 500 chars:",
+        sectionsData.financials.text.substring(
+          Math.max(0, sectionsData.financials.text.length - 500)
+        )
+      );
+      // console.log("Full text:", sectionsData.financials.text); // Çok uzun olabileceği için yorum satırına alındı
+      console.log("---END FINANCIALS DEBUG---\n");
+    }
 
     // AI analysis
     const analysis = await analyzeWithAI(
@@ -58,9 +87,17 @@ export async function POST(request: NextRequest) {
       filing.companyName
     );
 
+    // Debug bilgisini response'a ekle
+    const debugInfo = {
+      financialsRawText: sectionsData.financials?.text || "No financials data",
+      financialsLength: sectionsData.financials?.text.length || 0,
+      exhibitsLength: sectionsData.exhibits?.text.length || 0, // Exhibits bilgisini de ekleyelim
+    };
+
     return NextResponse.json({
       analysis,
       originalHtml,
+      debug: debugInfo, // Debug bilgisi ekle
     });
   } catch (error: unknown) {
     const errorMessage =
@@ -74,7 +111,7 @@ async function analyzeWithAI(
   filing: SECFiling,
   sectionsData: Record<string, { text: string; html: string }>,
   openai: OpenAI,
-  companyName: string // Parametre ismini de companyName olarak değiştirelim
+  companyName: string
 ): Promise<SECAnalysis> {
   const analysis: SECAnalysis = {
     filing,
@@ -82,82 +119,114 @@ async function analyzeWithAI(
     generatedAt: new Date().toISOString(),
   };
 
-  // Process sections in parallel for speed
   const analysisPromises: Promise<void>[] = [];
 
-  // Artık her bir analyze fonksiyonunu kendi servis dosyasından çağırıyoruz
+  // ÖNEMLİ: Her bir analyzeService çağrısını openaiRequestLimiter ile sarıyoruz.
+  // Limiter, aynı anda sadece `OPENAI_CONCURRENT_REQUESTS` sayısı kadar Promise'ın çalışmasına izin verecek.
+
+  // Business section
   if (sectionsData.business?.text && sectionsData.business.text.length > 500) {
     analysisPromises.push(
-      analyzeServices
-        .analyzeBusinessSection(sectionsData.business.text, openai, companyName)
-        .then((result) => {
-          if (result) analysis.sections.business = result;
-          console.log(`✅ business analyzed`);
-        })
-        .catch((error) =>
-          console.error(`❌ Failed to analyze business:`, error)
-        )
+      openaiRequestLimiter(() =>
+        analyzeServices
+          .analyzeBusinessSection(
+            sectionsData.business.text,
+            openai,
+            companyName
+          )
+          .then((result) => {
+            if (result) {
+              analysis.sections.business = result;
+              console.log(`✅ business analyzed`);
+            }
+          })
+          .catch((error) => {
+            console.error(`❌ Failed to analyze business:`, error);
+          })
+      )
     );
   }
+
   // Property section
   if (
     sectionsData.properties?.text &&
     sectionsData.properties.text.length > 50
   ) {
     analysisPromises.push(
-      analyzeServices
-        .analyzePropertySection(
-          sectionsData.properties.text,
-          openai,
-          companyName // companyName'i buraya ekledik
-        )
-        .then((result) => {
-          if (result) analysis.sections.properties = result;
-          console.log(`✅ properties analyzed`);
-        })
-        .catch((error) =>
-          console.error(`❌ Failed to analyze properties:`, error)
-        )
+      openaiRequestLimiter(() =>
+        analyzeServices
+          .analyzePropertySection(
+            sectionsData.properties.text,
+            openai,
+            companyName
+          )
+          .then((result) => {
+            if (result) {
+              analysis.sections.properties = result;
+              console.log(`✅ properties analyzed`);
+            }
+          })
+          .catch((error) => {
+            console.error(`❌ Failed to analyze properties:`, error);
+          })
+      )
     );
   }
 
   // Risk section
   if (sectionsData.risk?.text && sectionsData.risk.text.length > 500) {
-    // Minimum uzunluğu ayarlayabilirsiniz
     analysisPromises.push(
-      analyzeServices // analyzeServices üzerinden çağrı yapıyoruz
-        .analyzeRiskSection(sectionsData.risk.text, openai, companyName) // ticker parametresini de ekledik
-        .then((result) => {
-          if (result) analysis.sections.risks = result;
-          console.log(`✅ risks analyzed`);
-        })
-        .catch((error) => console.error(`❌ Failed to analyze risks:`, error))
+      openaiRequestLimiter(() =>
+        analyzeServices
+          .analyzeRiskSection(sectionsData.risk.text, openai, companyName)
+          .then((result) => {
+            if (result) {
+              analysis.sections.risks = result;
+              console.log(`✅ risks analyzed`);
+            }
+          })
+          .catch((error) => {
+            console.error(`❌ Failed to analyze risks:`, error);
+          })
+      )
     );
   }
 
   // Legal section
   if (sectionsData.legal?.text && sectionsData.legal.text.length > 300) {
     analysisPromises.push(
-      analyzeServices // Buradan analyzeServices'i çağırıyoruz
-        .analyzeLegalSection(sectionsData.legal.text, openai, companyName) // ticker'ı companyName olarak ilettik
-        .then((result) => {
-          if (result) analysis.sections.legal = result;
-          console.log(`✅ legal analyzed`);
-        })
-        .catch((error) => console.error(`❌ Failed to analyze legal:`, error))
+      openaiRequestLimiter(() =>
+        analyzeServices
+          .analyzeLegalSection(sectionsData.legal.text, openai, companyName)
+          .then((result) => {
+            if (result) {
+              analysis.sections.legal = result;
+              console.log(`✅ legal analyzed`);
+            }
+          })
+          .catch((error) => {
+            console.error(`❌ Failed to analyze legal:`, error);
+          })
+      )
     );
   }
 
   // MD&A section
   if (sectionsData.mdna?.text && sectionsData.mdna.text.length > 500) {
     analysisPromises.push(
-      analyzeServices // analyzeServices üzerinden çağrı yapıyoruz
-        .analyzeMdnaSection(sectionsData.mdna.text, openai, companyName)
-        .then((result) => {
-          if (result) analysis.sections.mdna = result;
-          console.log(`✅ mdna analyzed`);
-        })
-        .catch((error) => console.error(`❌ Failed to analyze mdna:`, error))
+      openaiRequestLimiter(() =>
+        analyzeServices
+          .analyzeMdnaSection(sectionsData.mdna.text, openai, companyName)
+          .then((result) => {
+            if (result) {
+              analysis.sections.mdna = result;
+              console.log(`✅ mdna analyzed`);
+            }
+          })
+          .catch((error) => {
+            console.error(`❌ Failed to analyze mdna:`, error);
+          })
+      )
     );
   }
 
@@ -167,63 +236,113 @@ async function analyzeWithAI(
     sectionsData.marketRisk.text.length > 300
   ) {
     analysisPromises.push(
-      analyzeServices // analyzeServices üzerinden çağrı yapıyoruz
-        .analyzeMarketRiskSection(
-          sectionsData.marketRisk.text,
-          openai,
-          companyName // companyName'i buraya ekledik
-        )
-        .then((result) => {
-          if (result) analysis.sections.marketRisks = result;
-          console.log(`✅ marketRisk analyzed`);
-        })
-        .catch((error) =>
-          console.error(`❌ Failed to analyze marketRisk:`, error)
-        )
+      openaiRequestLimiter(() =>
+        analyzeServices
+          .analyzeMarketRiskSection(
+            sectionsData.marketRisk.text,
+            openai,
+            companyName
+          )
+          .then((result) => {
+            if (result) {
+              analysis.sections.marketRisks = result;
+              console.log(`✅ marketRisk analyzed`);
+            }
+          })
+          .catch((error) => {
+            console.error(`❌ Failed to analyze marketRisk:`, error);
+          })
+      )
     );
   }
 
-  // Financials section: Artık analyzeFinancialsSection tüm chunk yönetimini kendi içinde yapıyor.
-  if (
-    sectionsData.financials?.text &&
-    sectionsData.financials.text.length > 500
-  ) {
+  // Financials section - Item 8 ve Item 15'ten birleştirilmiş veri kullanılacak
+  if (sectionsData.financials?.text) {
+    console.log(
+      `📊 Attempting to analyze financials (${sectionsData.financials.text.length} chars from combined Item 8/15)...`
+    );
+
     analysisPromises.push(
-      analyzeServices
-        .analyzeFinancialSection(
-          sectionsData.financials.text,
-          openai,
-          companyName
-        )
-        .then((result) => {
-          // ÖNEMLİ: result'ın null olup olmadığını kontrol edin
-          if (result) {
-            analysis.sections.financials = result;
-            console.log(`✅ financials analyzed and assigned successfully.`);
-          } else {
-            console.warn(`⚠️ financials analysis returned null or undefined.`);
-          }
-        })
-        .catch((error) =>
-          console.error(`❌ Failed to analyze financials in route.ts:`, error)
-        )
+      openaiRequestLimiter(() =>
+        // Burada da limiter'ı kullanıyoruz!
+        analyzeServices
+          .analyzeFinancialSection(
+            sectionsData.financials.text,
+            openai,
+            companyName
+          )
+          .then((result) => {
+            if (result) {
+              analysis.sections.financials = result;
+              console.log(`✅ financials analyzed successfully.`);
+            } else {
+              console.warn(
+                `⚠️ financials analysis returned null or undefined.`
+              );
+            }
+          })
+          .catch((error) => {
+            console.error(`❌ Failed to analyze financials:`, error);
+          })
+      )
     );
   }
 
+  // Controls section
   if (sectionsData.controls?.text && sectionsData.controls.text.length > 300) {
     analysisPromises.push(
-      analyzeServices
-        .analyzeControlsSection(sectionsData.controls.text, openai, companyName) // companyName'i ekledik
-        .then((result) => {
-          if (result) analysis.sections.controls = result;
-          console.log(`✅ controls analyzed`);
-        })
-        .catch((error) =>
-          console.error(`❌ Failed to analyze controls:`, error)
-        )
+      openaiRequestLimiter(() =>
+        analyzeServices
+          .analyzeControlsSection(
+            sectionsData.controls.text,
+            openai,
+            companyName
+          )
+          .then((result) => {
+            if (result) {
+              analysis.sections.controls = result;
+              console.log(`✅ controls analyzed`);
+            }
+          })
+          .catch((error) => {
+            console.error(`❌ Failed to analyze controls:`, error);
+          })
+      )
     );
   }
 
+  // Directors section
+  if (
+    sectionsData.directors?.text &&
+    sectionsData.directors.text.length > 300
+  ) {
+    analysisPromises.push(
+      openaiRequestLimiter(() =>
+        analyzeServices
+          .analyzeDirectorsSection(
+            sectionsData.directors.text,
+            openai,
+            companyName
+          )
+          .then((result) => {
+            if (result) {
+              analysis.sections.directors = result;
+              console.log(`✅ directors analyzed`);
+            }
+          })
+          .catch((error) => {
+            console.error(`❌ Failed to analyze directors:`, error);
+          })
+      )
+    );
+  }
+
+  console.log(
+    `🤖 Running ${analysisPromises.length} AI analyses with a concurrency limit of ${OPENAI_CONCURRENT_REQUESTS}...`
+  );
+
+  // Promise.allSettled'ı çağırıyoruz. p-limit burada devreye girerek
+  // Promise'ların ne zaman başlayacağını kontrol edecek.
   const settledResults = await Promise.allSettled(analysisPromises);
 
   settledResults.forEach((result, index) => {
@@ -236,88 +355,9 @@ async function analyzeWithAI(
   });
 
   console.log(
-    `[analyzeWithAI] Final analysis object before return:`,
-    JSON.stringify(analysis, null, 2)
+    `📊 Analysis complete. Sections analyzed:`,
+    Object.keys(analysis.sections)
   );
-
-  // Wait for all analyses to complete
-  console.log(
-    `🤖 Running ${analysisPromises.length} AI analyses in parallel...`
-  );
-  await Promise.all(analysisPromises);
 
   return analysis;
 }
-
-// // Directors section
-// if (
-//   sectionsData.directors?.text &&
-//   sectionsData.directors.text.length > 300
-// ) {
-//   analysisPromises.push(
-//     analyzeServices
-//       .analyzeDirectorsSection(
-//         sectionsData.directors.text,
-//         openai,
-//         companyName
-//       )
-//       .then((result) => {
-//         if (result) analysis.sections.directors = result;
-//         console.log(`✅ directors analyzed`);
-//       })
-//       .catch((error) =>
-//         console.error(`❌ Failed to analyze directors:`, error)
-//       )
-//   );
-// }
-
-// // Compensation section
-// if (
-//   sectionsData.compensation?.text &&
-//   sectionsData.compensation.text.length > 300
-// ) {
-//   analysisPromises.push(
-//     analyzeCompensationSection(sectionsData.compensation.text, openai)
-//       .then((result) => {
-//         if (result) analysis.sections.compensation = result;
-//         console.log(`✅ compensation analyzed`);
-//       })
-//       .catch((error) =>
-//         console.error(`❌ Failed to analyze compensation:`, error)
-//       )
-//   );
-// }
-
-// // Ownership section
-// if (
-//   sectionsData.ownership?.text &&
-//   sectionsData.ownership.text.length > 300
-// ) {
-//   analysisPromises.push(
-//     analyzeOwnershipSection(sectionsData.ownership.text, openai)
-//       .then((result) => {
-//         if (result) analysis.sections.ownership = result;
-//         console.log(`✅ ownership analyzed`);
-//       })
-//       .catch((error) =>
-//         console.error(`❌ Failed to analyze ownership:`, error)
-//       )
-//   );
-// }
-
-// // Related Party section
-// if (
-//   sectionsData.relatedParty?.text &&
-//   sectionsData.relatedParty.text.length > 300
-// ) {
-//   analysisPromises.push(
-//     analyzeRelatedPartySection(sectionsData.relatedParty.text, openai)
-//       .then((result) => {
-//         if (result) analysis.sections.relatedParty = result;
-//         console.log(`✅ relatedParty analyzed`);
-//       })
-//       .catch((error) =>
-//         console.error(`❌ Failed to analyze relatedParty:`, error)
-//       )
-//   );
-// }
