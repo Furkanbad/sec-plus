@@ -1,5 +1,8 @@
 // lib/sec-api-client.ts
-import type { SECFiling, SECSearchRequest } from "@/types/sec-analysis";
+import type {
+  SECFiling,
+  SECSearchRequest,
+} from "@/app/api/analyze-sec/models/sec-analysis";
 
 export class SECApiClient {
   private apiKey: string;
