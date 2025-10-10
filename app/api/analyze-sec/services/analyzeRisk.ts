@@ -6,7 +6,11 @@ import {
   RiskAnalysis,
   riskCategoryEnum,
   riskSeverityEnum,
-} from "../schemas/riskAnalysisSchema"; // Doğru yolu ayarlayın
+} from "../schemas/riskAnalysisSchema";
+import {
+  EXCERPT_INSTRUCTION,
+  JSON_EXCERPT_INSTRUCTION,
+} from "../constants/llm-instructions";
 
 export async function analyzeRiskSection(
   text: string,
@@ -17,7 +21,8 @@ export async function analyzeRiskSection(
   const categories = riskCategoryEnum.options.map((o) => `'${o}'`).join(", ");
   const severities = riskSeverityEnum.options.map((o) => `'${o}'`).join("|");
 
-  const prompt = `From the "Risk Factors" section for ${
+  const prompt = `${EXCERPT_INSTRUCTION}
+  From the "Risk Factors" section for ${
     ticker || "the company"
   }, provide a detailed analysis by extracting 8-15 specific risks.
   For each risk, provide the following information:
@@ -36,6 +41,8 @@ export async function analyzeRiskSection(
   Finally, provide an **overallRiskSummary**: A concluding statement (2-4 sentences) on the company's general risk profile, highlighting the most significant identified risks.
 
   Text: ${text}
+
+  ${JSON_EXCERPT_INSTRUCTION}
 
   Return JSON. Ensure 'risks' is an array of objects.
   {

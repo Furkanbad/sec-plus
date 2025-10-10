@@ -6,8 +6,8 @@ const monetaryValueSchema = z
   .trim()
   .min(1, "Monetary value cannot be empty.")
   .regex(
-    /^\$?[\d,]+(\.\d{1,2})?(\s*(million|billion|trillion))?$/i,
-    "Invalid monetary value format. Must include currency and format (e.g., '$X million')."
+    /^\$?[\d,]+(\.\d{1,2})?(\s*([BbMmKkTt]|billion|million|trillion|thousand))?$/i,
+    "Invalid monetary value format. Must include currency (e.g., '$391.04B' or '$391.04 billion')."
   )
   .catch("N/A")
   .default("N/A");
@@ -16,7 +16,10 @@ const percentageValueSchema = z
   .string()
   .trim()
   .min(1, "Percentage value cannot be empty.")
-  .regex(/^\d+(\.\d{1,2})?%$/, "Invalid percentage format (e.g., 'X%').")
+  .regex(
+    /^-?\d+(\.\d{1,2})?%$/,
+    "Invalid percentage format (e.g., '15.5%' or '-3.2%')."
+  )
   .catch("N/A")
   .default("N/A");
 
@@ -54,7 +57,6 @@ const financialEntryChangeSchema = z.object({
   previousYear: financialEntrySchema,
   changeAbsolute: monetaryValueSchema,
   changePercentage: percentageValueSchema,
-  // Bu alanlar analitik özetler içindir:
   drivers: descriptionSchema.optional(),
   factors: descriptionSchema.optional(),
   efficiencyComment: descriptionSchema.optional(),
@@ -64,8 +66,6 @@ const financialEntryChangeSchema = z.object({
   taxRateComment: descriptionSchema.optional(),
   contributors: descriptionSchema.optional(),
   factorsBeyondNetIncome: descriptionSchema.optional(),
-  // Bu genel bir alıntı olup, sadece anlamlı bir açıklama veya içgörü içeriyorsa doldurulmalıdır.
-  // Varsayılan olarak optional bırakalım ve prompt ile yönlendirelim.
   excerpt: excerptSchema.optional(),
 });
 
@@ -78,7 +78,7 @@ export const financialAnalysisSchema = z.object({
 
   revenueAnalysis: financialEntryChangeSchema.extend({
     drivers: descriptionSchema,
-    excerpt: excerptSchema.optional(), // Opsiyonel
+    excerpt: excerptSchema.optional(),
   }),
 
   cogsAndGrossProfitAnalysis: z.object({
@@ -87,15 +87,15 @@ export const financialAnalysisSchema = z.object({
       previousYear: financialEntrySchema,
     }),
     grossProfit: financialEntryChangeSchema.extend({
-      excerpt: excerptSchema.optional(), // Opsiyonel
+      excerpt: excerptSchema.optional(),
     }),
     factors: descriptionSchema,
-    excerpt: excerptSchema.optional(), // Opsiyonel
+    excerpt: excerptSchema.optional(),
   }),
 
   operatingExpensesAnalysis: z.object({
     totalOperatingExpenses: financialEntryChangeSchema.extend({
-      excerpt: excerptSchema.optional(), // Opsiyonel
+      excerpt: excerptSchema.optional(),
     }),
     sgna: z
       .object({
@@ -110,17 +110,17 @@ export const financialAnalysisSchema = z.object({
       })
       .optional(),
     efficiencyComment: descriptionSchema,
-    excerpt: excerptSchema.optional(), // Opsiyonel
+    excerpt: excerptSchema.optional(),
   }),
 
   operatingIncomeEBITAnalysis: financialEntryChangeSchema.extend({
     trendComment: descriptionSchema,
-    excerpt: excerptSchema.optional(), // Opsiyonel
+    excerpt: excerptSchema.optional(),
   }),
 
   ebitdaAnalysis: financialEntryChangeSchema.extend({
     significance: descriptionSchema,
-    excerpt: excerptSchema.optional(), // Opsiyonel
+    excerpt: excerptSchema.optional(),
   }),
 
   interestAndOtherNonOperatingItems: z.object({
@@ -133,7 +133,7 @@ export const financialAnalysisSchema = z.object({
       previousYear: financialEntrySchema,
     }),
     impactComment: descriptionSchema,
-    excerpt: excerptSchema.optional(), // Opsiyonel
+    excerpt: excerptSchema.optional(),
   }),
 
   incomeTaxExpenseAnalysis: z.object({
@@ -142,12 +142,12 @@ export const financialAnalysisSchema = z.object({
     effectiveTaxRateCurrentYear: percentageValueSchema,
     effectiveTaxRatePreviousYear: percentageValueSchema,
     taxRateComment: descriptionSchema,
-    excerpt: excerptSchema.optional(), // Opsiyonel
+    excerpt: excerptSchema.optional(),
   }),
 
   netIncomeAnalysis: financialEntryChangeSchema.extend({
     contributors: descriptionSchema,
-    excerpt: excerptSchema.optional(), // Opsiyonel
+    excerpt: excerptSchema.optional(),
   }),
 
   epsDilutedAnalysis: financialEntryChangeSchema.extend({
@@ -162,7 +162,7 @@ export const financialAnalysisSchema = z.object({
     changeAbsolute: monetaryValueSchema,
     changePercentage: percentageValueSchema,
     factorsBeyondNetIncome: descriptionSchema,
-    excerpt: excerptSchema.optional(), // Opsiyonel
+    excerpt: excerptSchema.optional(),
   }),
 
   profitabilityRatios: z.object({
@@ -191,7 +191,7 @@ export const financialAnalysisSchema = z.object({
       previousYear: percentageValueSchema,
     }),
     trendComment: descriptionSchema,
-    excerpt: excerptSchema.optional(), // Opsiyonel
+    excerpt: excerptSchema.optional(),
   }),
 
   noteworthyItemsImpacts: z
@@ -212,13 +212,13 @@ export const financialAnalysisSchema = z.object({
           .default("unusual_item"),
         financialImpact: monetaryValueSchema.optional(),
         recurring: z.boolean().catch(false).default(false),
-        excerpt: excerptSchema, // BURADA KESİNLİKLE ZORUNLU KALIYOR
+        excerpt: excerptSchema,
       })
     )
     .default([]),
 
   keyInsights: descriptionSchema,
-  keyInsightsExcerpt: excerptSchema, // BURADA KESİNLİKLE ZORUNLU KALIYOR
+  keyInsightsExcerpt: excerptSchema,
 });
 
 export type FinancialAnalysis = z.infer<typeof financialAnalysisSchema>;

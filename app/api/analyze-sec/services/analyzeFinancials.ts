@@ -6,10 +6,15 @@ import {
   FinancialAnalysis,
 } from "../schemas/financialsAnalysisSchema";
 
-// Token limitleri - daha güvenli değerler
-const MAX_CHUNK_SIZE_TOKENS = 15000; // 30K'dan 15K'ya düşürdük
+import {
+  EXCERPT_INSTRUCTION,
+  JSON_EXCERPT_INSTRUCTION,
+} from "../constants/llm-instructions";
 
-// Basit token sayma (yaklaşık)
+// Token limitleri
+const MAX_CHUNK_SIZE_TOKENS = 15000;
+
+// Token sayma
 const countTokens = (str: string) => Math.ceil(str.length / 4);
 
 // Delay fonksiyonu
@@ -18,138 +23,206 @@ const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 export async function analyzeFinancialSection(
   text: string,
   openai: OpenAI,
-  companyName: string
+  companyName: string,
+  xbrlData?: string
 ): Promise<FinancialAnalysis | null> {
-  const promptTemplate = (
-    chunkText: string
-  ) => `Analyze the Financial Statements for ${companyName}. Focus on profitability analysis for the most recent two fiscal years.
+  const promptTemplate = (chunkText: string) => `${EXCERPT_INSTRUCTION}
 
-  IMPORTANT: Return ONLY the requested fields. For optional 'excerpt' fields, include them ONLY if they provide meaningful qualitative insight beyond just numbers.
+You are analyzing Financial Statements for ${companyName}.
 
-  Extract and analyze:
-  1. Revenue Analysis (current/previous year, change, drivers)
-  2. COGS & Gross Profit Analysis
-  3. Operating Expenses Analysis (total, SG&A, R&D if available)
-  4. Operating Income (EBIT) Analysis
-  5. EBITDA Analysis
-  6. Interest & Non-Operating Items
-  7. Income Tax Analysis
-  8. Net Income Analysis
-  9. EPS (Diluted) Analysis
-  10. Profitability Ratios (margins, ROA, ROE)
-  11. Noteworthy Items/Footnotes (unusual items with MANDATORY excerpt)
-  12. Key Insights (with MANDATORY excerpt)
+**CRITICAL: DATA SOURCE PRIORITIZATION**
 
-  Financial Text:
-  ${chunkText}
+You have TWO data sources:
+1. **XBRL Structured Data** (below): Precise, machine-readable financial figures
+2. **Narrative Text** (below): Contextual explanations and management analysis
 
-  Return JSON matching this exact structure. All monetary values must include currency (e.g., "$X million"):
-  {
-    "title": "Detailed Profitability Analysis and Year-over-Year Comparison",
-    "revenueAnalysis": {
-      "currentYear": {"value": "$X million", "period": "FY20XX"},
-      "previousYear": {"value": "$Y million", "period": "FY20XY"},
-      "changeAbsolute": "$Z million",
-      "changePercentage": "A%",
-      "drivers": "Explanation of revenue changes"
+**INSTRUCTIONS:**
+✅ **ALWAYS prioritize XBRL data for ALL numerical values** (revenue, expenses, assets, liabilities, cash flow, margins, etc.)
+✅ **Use narrative text for:**
+   - Business context and reasons for changes
+   - Management commentary and insights
+   - Qualitative factors
+   - Forward-looking statements
+   - All excerpts (MANDATORY)
+✅ **Cross-reference both sources** for comprehensive analysis
+⚠️ **If XBRL lacks a specific metric**, extract from narrative text
+⚠️ **ALL excerpts MUST be direct quotes from NARRATIVE TEXT**, never from XBRL data
+
+${
+  xbrlData
+    ? `\n=== XBRL STRUCTURED DATA (USE FOR EXACT NUMBERS) ===\n${xbrlData}\n=== END XBRL DATA ===\n`
+    : "⚠️ XBRL data not available - extract all metrics from narrative text\n"
+}
+
+=== NARRATIVE TEXT (USE FOR CONTEXT AND EXCERPTS) ===
+${chunkText}
+=== END NARRATIVE TEXT ===
+
+${JSON_EXCERPT_INSTRUCTION}
+
+**OUTPUT REQUIREMENTS:**
+- All monetary values: Include currency and scale (e.g., "$45.2B", "$1.23M")
+- All percentages: Include "%" symbol (e.g., "15.5%")
+- All excerpts: Direct quotes from NARRATIVE TEXT only
+- Year-over-year comparisons: Provide where applicable
+- Period labels: Include (e.g., "FY2024", "Q3 2024")
+
+**CRITICAL FORMAT REQUIREMENTS:**
+- Monetary values can use EITHER format:
+  * Short: "$391.04B", "$7.75B", "$123.22B" (preferred)
+  * Long: "$391.04 billion", "$7.75 billion", "$123.22 billion"
+- Percentages: "2.02%", "-3.36%" (include % and handle negatives)
+- Periods: "FY2024", "FY2023", "Q3 2024", etc.
+
+**ACCEPTED FORMATS:**
+✅ "$391.04B" or "$391.04 billion"
+✅ "$7.75M" or "$7.75 million"  
+✅ "$123.22K" or "$123.22 thousand"
+✅ "2.02%" or "-3.36%"
+❌ "391 billion" (missing $)
+❌ "2.02" (missing %)
+❌ "$391B" (missing decimal for billions)
+
+Return JSON matching this exact structure:
+{
+  "title": "Detailed Profitability Analysis and Year-over-Year Comparison",
+  "revenueAnalysis": {
+    "currentYear": {"value": "$391.04B", "period": "FY2024"},
+    "previousYear": {"value": "$383.29B", "period": "FY2023"},
+    "changeAbsolute": "$7.75B",
+    "changePercentage": "2.02%",
+    "drivers": "Brief explanation of revenue changes",
+    "excerpt": "MANDATORY direct quote from narrative text"
+  },
+  "cogsAndGrossProfitAnalysis": {
+    "cogs": {
+      "currentYear": {"value": "$210.35B", "period": "FY2024"},
+      "previousYear": {"value": "$214.14B", "period": "FY2023"}
     },
-    "cogsAndGrossProfitAnalysis": {
-      "cogs": {
-        "currentYear": {"value": "$X million", "period": "FY20XX"},
-        "previousYear": {"value": "$Y million", "period": "FY20XY"}
-      },
-      "grossProfit": {
-        "currentYear": {"value": "$X million", "period": "FY20XX"},
-        "previousYear": {"value": "$Y million", "period": "FY20XY"},
-        "changeAbsolute": "$Z million",
-        "changePercentage": "A%"
-      },
-      "factors": "Explanation of COGS and gross margin factors"
+    "grossProfit": {
+      "currentYear": {"value": "$180.68B", "period": "FY2024"},
+      "previousYear": {"value": "$169.15B", "period": "FY2023"},
+      "changeAbsolute": "$11.53B",
+      "changePercentage": "6.82%",
+      "excerpt": "MANDATORY direct quote"
     },
-    "operatingExpensesAnalysis": {
-      "totalOperatingExpenses": {
-        "currentYear": {"value": "$X million", "period": "FY20XX"},
-        "previousYear": {"value": "$Y million", "period": "FY20XY"},
-        "changeAbsolute": "$Z million",
-        "changePercentage": "A%"
-      },
-      "sgna": {
-        "currentYear": {"value": "$X million", "period": "FY20XX"},
-        "previousYear": {"value": "$Y million", "period": "FY20XY"}
-      },
-      "efficiencyComment": "Comment on operational efficiency"
+    "factors": "Explanation of COGS and margin factors",
+    "excerpt": "MANDATORY direct quote"
+  },
+  "operatingExpensesAnalysis": {
+    "totalOperatingExpenses": {
+      "currentYear": {"value": "$57.47B", "period": "FY2024"},
+      "previousYear": {"value": "$54.85B", "period": "FY2023"},
+      "changeAbsolute": "$2.62B",
+      "changePercentage": "4.77%",
+      "excerpt": "MANDATORY direct quote"
     },
-    "operatingIncomeEBITAnalysis": {
-      "currentYear": {"value": "$X million", "period": "FY20XX"},
-      "previousYear": {"value": "$Y million", "period": "FY20XY"},
-      "changeAbsolute": "$Z million",
-      "changePercentage": "A%",
-      "trendComment": "Comment on operational profitability trend"
+    "sgna": {
+      "currentYear": {"value": "$26.10B", "period": "FY2024"},
+      "previousYear": {"value": "$24.93B", "period": "FY2023"}
     },
-    "ebitdaAnalysis": {
-      "currentYear": {"value": "$X million", "period": "FY20XX"},
-      "previousYear": {"value": "$Y million", "period": "FY20XY"},
-      "changeAbsolute": "$Z million",
-      "changePercentage": "A%",
-      "significance": "Significance or drivers of change"
+    "efficiencyComment": "Comment on operational efficiency",
+    "excerpt": "MANDATORY direct quote"
+  },
+  "operatingIncomeEBITAnalysis": {
+    "currentYear": {"value": "$123.22B", "period": "FY2024"},
+    "previousYear": {"value": "$114.30B", "period": "FY2023"},
+    "changeAbsolute": "$8.92B",
+    "changePercentage": "7.81%",
+    "trendComment": "Comment on profitability trend",
+    "excerpt": "MANDATORY direct quote"
+  },
+  "ebitdaAnalysis": {
+    "currentYear": {"value": "$134.66B", "period": "FY2024"},
+    "previousYear": {"value": "$125.82B", "period": "FY2023"},
+    "changeAbsolute": "$8.84B",
+    "changePercentage": "7.03%",
+    "significance": "Significance of EBITDA change",
+    "excerpt": "MANDATORY direct quote"
+  },
+  "interestAndOtherNonOperatingItems": {
+    "interestExpense": {
+      "currentYear": {"value": "$3.75B", "period": "FY2024"},
+      "previousYear": {"value": "$3.93B", "period": "FY2023"}
     },
-    "interestAndOtherNonOperatingItems": {
-      "interestExpense": {
-        "currentYear": {"value": "$X million", "period": "FY20XX"},
-        "previousYear": {"value": "$Y million", "period": "FY20XY"}
-      },
-      "otherNonOperatingIncomeExpense": {
-        "currentYear": {"value": "$X million", "period": "FY20XX"},
-        "previousYear": {"value": "$Y million", "period": "FY20XY"}
-      },
-      "impactComment": "Summary of impact on pre-tax income"
+    "otherNonOperatingIncomeExpense": {
+      "currentYear": {"value": "$269M", "period": "FY2024"},
+      "previousYear": {"value": "-$565M", "period": "FY2023"}
     },
-    "incomeTaxExpenseAnalysis": {
-      "currentYear": {"value": "$X million", "period": "FY20XX"},
-      "previousYear": {"value": "$Y million", "period": "FY20XY"},
-      "effectiveTaxRateCurrentYear": "X%",
-      "effectiveTaxRatePreviousYear": "Y%",
-      "taxRateComment": "Comment on tax rate changes"
-    },
-    "netIncomeAnalysis": {
-      "currentYear": {"value": "$X million", "period": "FY20XX"},
-      "previousYear": {"value": "$Y million", "period": "FY20XY"},
-      "changeAbsolute": "$Z million",
-      "changePercentage": "A%",
-      "contributors": "Key contributors to net income fluctuations"
-    },
-    "epsDilutedAnalysis": {
-      "currentYear": {"value": "$X", "period": "FY20XX"},
-      "previousYear": {"value": "$Y", "period": "FY20XY"},
-      "changeAbsolute": "$Z",
-      "changePercentage": "A%",
-      "factorsBeyondNetIncome": "Factors affecting EPS beyond net income"
-    },
-    "profitabilityRatios": {
-      "grossProfitMargin": {"currentYear": "X%", "previousYear": "Y%"},
-      "operatingMargin": {"currentYear": "X%", "previousYear": "Y%"},
-      "netProfitMargin": {"currentYear": "X%", "previousYear": "Y%"},
-      "ebitdaMargin": {"currentYear": "X%", "previousYear": "Y%"},
-      "roa": {"currentYear": "X%", "previousYear": "Y%"},
-      "roe": {"currentYear": "X%", "previousYear": "Y%"},
-      "trendComment": "Comment on margin trends"
-    },
-    "noteworthyItemsImpacts": [
-      {
-        "description": "Description of unusual item",
-        "type": "unusual_item",
-        "financialImpact": "$X million",
-        "recurring": false,
-        "excerpt": "MANDATORY direct quote from text"
-      }
-    ],
-    "keyInsights": "Summary of significant findings",
-    "keyInsightsExcerpt": "MANDATORY direct quote summarizing key insight"
-  }`;
+    "impactComment": "Impact on pre-tax income",
+    "excerpt": "MANDATORY direct quote"
+  },
+  "incomeTaxExpenseAnalysis": {
+    "currentYear": {"value": "$29.75B", "period": "FY2024"},
+    "previousYear": {"value": "$16.74B", "period": "FY2023"},
+    "effectiveTaxRateCurrentYear": "24.1%",
+    "effectiveTaxRatePreviousYear": "14.7%",
+    "taxRateComment": "Comment on tax rate changes",
+    "excerpt": "MANDATORY direct quote"
+  },
+  "netIncomeAnalysis": {
+    "currentYear": {"value": "$93.74B", "period": "FY2024"},
+    "previousYear": {"value": "$97.00B", "period": "FY2023"},
+    "changeAbsolute": "-$3.26B",
+    "changePercentage": "-3.36%",
+    "contributors": "Key contributors to changes",
+    "excerpt": "MANDATORY direct quote"
+  },
+  "epsDilutedAnalysis": {
+    "currentYear": {"value": "$6.08", "period": "FY2024"},
+    "previousYear": {"value": "$6.13", "period": "FY2023"},
+    "changeAbsolute": "-$0.05",
+    "changePercentage": "-0.82%",
+    "factorsBeyondNetIncome": "Factors affecting EPS (e.g., buybacks)",
+    "excerpt": "MANDATORY direct quote"
+  },
+  "profitabilityRatios": {
+    "grossProfitMargin": {"currentYear": "46.2%", "previousYear": "44.1%"},
+    "operatingMargin": {"currentYear": "31.5%", "previousYear": "29.8%"},
+    "netProfitMargin": {"currentYear": "24.0%", "previousYear": "25.3%"},
+    "ebitdaMargin": {"currentYear": "34.4%", "previousYear": "32.8%"},
+    "roa": {"currentYear": "25.6%", "previousYear": "28.5%"},
+    "roe": {"currentYear": "164.5%", "previousYear": "156.1%"},
+    "trendComment": "Comment on margin trends",
+    "excerpt": "MANDATORY direct quote"
+  },
+  "noteworthyItemsImpacts": [
+    {
+      "description": "Description of unusual/one-time item",
+      "type": "unusual_item",
+      "financialImpact": "$10.3B",
+      "recurring": false,
+      "excerpt": "MANDATORY direct quote from narrative text"
+    }
+  ],
+  "keyInsights": "Concise summary of 2-3 most significant findings",
+  "keyInsightsExcerpt": "MANDATORY direct quote"
+}
+
+**REMEMBER:**
+- Extract ALL numbers from XBRL data (if available)
+- Extract ALL excerpts from narrative text
+- Never quote XBRL data in excerpts
+- Calculate percentage changes accurately
+- Include currency symbols and units
+- Use exact format: "$XXX.XXB" not "XXX billion" or "XXX,XXX million"`;
 
   let fullAnalysis: Partial<FinancialAnalysis> = {};
   const textTokens = countTokens(text);
+
   console.log(`[analyzeFinancialSection] Total tokens: ${textTokens}`);
+  console.log(
+    `[analyzeFinancialSection] XBRL data ${xbrlData ? "IS" : "NOT"} available`
+  );
+
+  if (xbrlData) {
+    console.log(
+      `[analyzeFinancialSection] XBRL data preview (first 500 chars):\n${xbrlData.substring(
+        0,
+        500
+      )}...`
+    );
+  }
 
   try {
     if (textTokens > MAX_CHUNK_SIZE_TOKENS) {
@@ -173,7 +246,6 @@ export async function analyzeFinancialSection(
 
       console.log(`[analyzeFinancialSection] Created ${chunks.length} chunks`);
 
-      // Process chunks sequentially with delay
       for (let i = 0; i < chunks.length; i++) {
         console.log(
           `[analyzeFinancialSection] Processing chunk ${i + 1}/${
@@ -181,8 +253,9 @@ export async function analyzeFinancialSection(
           }...`
         );
 
-        // Add delay before each request
-        await delay(3000); // 3 second delay between chunks
+        if (i > 0) {
+          await delay(3000);
+        }
 
         const chunkPrompt = promptTemplate(chunks[i]);
 
@@ -192,17 +265,31 @@ export async function analyzeFinancialSection(
             messages: [{ role: "user", content: chunkPrompt }],
             response_format: { type: "json_object" },
             temperature: 0.1,
-            max_tokens: 4000, // Limit response size
+            max_tokens: 4000,
           });
 
           const rawParsedContent = JSON.parse(
             result.choices[0].message.content || "{}"
           );
 
+          console.log(
+            `[analyzeFinancialSection] AI response for chunk ${i + 1}:`,
+            JSON.stringify(
+              {
+                revenueAnalysis: rawParsedContent.revenueAnalysis,
+                netIncomeAnalysis: rawParsedContent.netIncomeAnalysis,
+                operatingIncomeEBITAnalysis:
+                  rawParsedContent.operatingIncomeEBITAnalysis,
+              },
+              null,
+              2
+            )
+          );
+
           if (i === 0) {
             fullAnalysis = rawParsedContent;
           } else {
-            // Merge noteworthy items from subsequent chunks
+            // Merge noteworthy items
             if (rawParsedContent.noteworthyItemsImpacts?.length > 0) {
               if (!fullAnalysis.noteworthyItemsImpacts) {
                 fullAnalysis.noteworthyItemsImpacts = [];
@@ -212,6 +299,17 @@ export async function analyzeFinancialSection(
               );
               fullAnalysis.noteworthyItemsImpacts.push(...newItems);
             }
+
+            // Merge key insights
+            if (
+              rawParsedContent.keyInsights &&
+              rawParsedContent.keyInsights !== "None identified."
+            ) {
+              fullAnalysis.keyInsights =
+                (fullAnalysis.keyInsights || "") +
+                " " +
+                rawParsedContent.keyInsights;
+            }
           }
         } catch (chunkError: any) {
           console.error(
@@ -219,13 +317,12 @@ export async function analyzeFinancialSection(
             chunkError.message
           );
 
-          // If rate limit error, wait longer
           if (chunkError.message?.includes("429")) {
             console.log(
               `[analyzeFinancialSection] Rate limit hit, waiting 30s...`
             );
             await delay(30000);
-            i--; // Retry the same chunk
+            i--;
           }
         }
       }
@@ -244,12 +341,45 @@ export async function analyzeFinancialSection(
       });
 
       fullAnalysis = JSON.parse(result.choices[0].message.content || "{}");
+
+      console.log(
+        `[analyzeFinancialSection] AI response (single request):`,
+        JSON.stringify(
+          {
+            revenueAnalysis: fullAnalysis.revenueAnalysis,
+            netIncomeAnalysis: fullAnalysis.netIncomeAnalysis,
+            operatingIncomeEBITAnalysis:
+              fullAnalysis.operatingIncomeEBITAnalysis,
+          },
+          null,
+          2
+        )
+      );
     }
 
     // Validate with Zod
+    console.log("[analyzeFinancialSection] Validating with Zod...");
+    console.log("[analyzeFinancialSection] Sample values before validation:", {
+      revenueCurrentValue: fullAnalysis.revenueAnalysis?.currentYear?.value,
+      revenuePreviousValue: fullAnalysis.revenueAnalysis?.previousYear?.value,
+      revenueChangePercentage: fullAnalysis.revenueAnalysis?.changePercentage,
+      netIncomeCurrentValue: fullAnalysis.netIncomeAnalysis?.currentYear?.value,
+    });
+
     const validatedContent = financialAnalysisSchema.parse(fullAnalysis);
 
-    // Clean up noteworthy items
+    console.log("[analyzeFinancialSection] ✅ Zod validation successful");
+    console.log("[analyzeFinancialSection] Sample values after validation:", {
+      revenueCurrentValue: validatedContent.revenueAnalysis?.currentYear?.value,
+      revenuePreviousValue:
+        validatedContent.revenueAnalysis?.previousYear?.value,
+      revenueChangePercentage:
+        validatedContent.revenueAnalysis?.changePercentage,
+      netIncomeCurrentValue:
+        validatedContent.netIncomeAnalysis?.currentYear?.value,
+    });
+
+    // Ensure noteworthy items
     if (!validatedContent.noteworthyItemsImpacts?.length) {
       validatedContent.noteworthyItemsImpacts = [
         {
@@ -257,21 +387,29 @@ export async function analyzeFinancialSection(
           type: "none_identified",
           financialImpact: "N/A",
           recurring: false,
-          excerpt: "No specific unusual items were identified.",
+          excerpt:
+            "No specific unusual items were identified in the financial statements.",
         },
       ];
+    }
+
+    console.log("[analyzeFinancialSection] ✅ Analysis complete");
+    if (xbrlData) {
+      console.log(
+        "[analyzeFinancialSection] ✅ XBRL data was used for numerical values"
+      );
     }
 
     return validatedContent;
   } catch (error) {
     if (error instanceof z.ZodError) {
       console.error(
-        "[analyzeFinancialSection] Validation error:",
+        "[analyzeFinancialSection] ❌ Validation error:",
         error.issues
       );
       return null;
     }
-    console.error("[analyzeFinancialSection] Unexpected error:", error);
+    console.error("[analyzeFinancialSection] ❌ Unexpected error:", error);
     return null;
   }
 }

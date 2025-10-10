@@ -4,14 +4,20 @@ import OpenAI from "openai";
 import {
   marketRiskAnalysisSchema,
   MarketRiskAnalysis,
-} from "../schemas/marketRiskAnalysisSchema"; // Doğru yolu ayarlayın
+} from "../schemas/marketRiskAnalysisSchema";
+
+import {
+  EXCERPT_INSTRUCTION,
+  JSON_EXCERPT_INSTRUCTION,
+} from "../constants/llm-instructions";
 
 export async function analyzeMarketRiskSection(
   text: string,
   openai: OpenAI,
   companyName: string // Şirket adını dinamik olarak almak için parametre eklendi
 ): Promise<MarketRiskAnalysis> {
-  const prompt = `From the Market Risk section for ${
+  const prompt = `${EXCERPT_INSTRUCTION}
+  From the Market Risk section for ${
     companyName || "the company"
   }, provide a detailed analysis of market risk exposures, including their potential impact, the company's mitigation strategies, and any reported sensitivity analyses.
 
@@ -43,6 +49,8 @@ export async function analyzeMarketRiskSection(
       *   Include any forward-looking statements or management commentary on the future outlook of market risks or risk management strategies. If everything appears standard and no specific concerns or outlook are mentioned, state 'None identified'. **If there is a concise statement that best captures any key takeaways or future outlook, provide it as a single direct quote (1-3 sentences).**
 
   Text: ${text}
+
+  ${EXCERPT_INSTRUCTION}
 
   Return JSON. Ensure all financial impacts include currency and unit. If a field for \`sensitivityAnalysisDetails\` would contain 'N/A' or similar placeholder for any of its sub-fields, omit that specific \`sensitivityAnalysisDetails\` object entirely.
   {

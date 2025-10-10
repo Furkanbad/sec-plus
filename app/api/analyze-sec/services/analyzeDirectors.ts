@@ -4,14 +4,19 @@ import OpenAI from "openai";
 import {
   directorsAnalysisSchema,
   DirectorsAnalysis,
-} from "../schemas/directorsAnalysisSchema"; // Doğru yolu ayarla
+} from "../schemas/directorsAnalysisSchema";
+import {
+  EXCERPT_INSTRUCTION,
+  JSON_EXCERPT_INSTRUCTION,
+} from "../constants/llm-instructions";
 
 export async function analyzeDirectorsSection(
   text: string,
   openai: OpenAI,
   companyName: string // Şirket adını dinamik olarak almak için companyName parametresi ekliyoruz
 ): Promise<DirectorsAnalysis> {
-  const prompt = `From the "Directors and Executive Officers" or "Board of Directors" section for ${
+  const prompt = `${EXCERPT_INSTRUCTION}
+  From the "Directors and Executive Officers" or "Board of Directors" section for ${
     companyName || "the company"
   }, provide a detailed analysis of the company's board composition, governance structure, and key leadership.
 
@@ -47,6 +52,8 @@ export async function analyzeDirectorsSection(
       *   Highlight any particularly noteworthy points, potential governance risks (e.g., lack of diversity, over-tenured directors, weak committee oversight), or strengths identified in the board structure. State 'None identified' if everything appears standard.
 
   Text: ${text}
+
+  ${JSON_EXCERPT_INSTRUCTION}
 
   Return JSON.
   {

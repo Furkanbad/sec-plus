@@ -6,12 +6,18 @@ import {
   LegalAnalysis,
 } from "../schemas/legalAnalysisSchema"; // Doğru yolu ayarla
 
+import {
+  EXCERPT_INSTRUCTION,
+  JSON_EXCERPT_INSTRUCTION,
+} from "../constants/llm-instructions";
+
 export async function analyzeLegalSection(
   text: string,
   openai: OpenAI,
   ticker: string = "the company"
 ): Promise<LegalAnalysis> {
-  const prompt = `From the Legal Proceedings section for ${ticker}, provide a comprehensive analysis of significant legal matters.
+  const prompt = `${EXCERPT_INSTRUCTION}
+  From the Legal Proceedings section for ${ticker}, provide a comprehensive analysis of significant legal matters.
 
   Specifically, extract and analyze the following, always providing a **single direct quote (1-3 sentences) from the text** for each key piece of information where specified (e.g., for summary, case details, financial impact).
 
@@ -33,6 +39,8 @@ export async function analyzeLegalSection(
   5.  **Overall Risk Assessment:** Provide a concluding statement on the overall legal risk exposure for the company based on the information provided. State 'Low legal risk' or 'Moderate legal risk' if an assessment can be inferred, or 'Assessment not specified'. **Include a single direct quote (1-3 sentences) from the text that best supports this risk assessment.**
 
   Text: ${text}
+
+  ${JSON_EXCERPT_INSTRUCTION}
 
   Return JSON. If no material litigation, only return the "overallLegalSummary" and "overallLegalSummaryExcerpt" indicating 'No material litigation reported' and 'No excerpt available.'.
   {

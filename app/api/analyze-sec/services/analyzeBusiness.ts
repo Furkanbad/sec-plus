@@ -6,14 +6,18 @@ import {
   BusinessAnalysis,
 } from "../schemas/businessAnalysisSchema"; // Doğru yolu ayarla
 
+import {
+  EXCERPT_INSTRUCTION,
+  JSON_EXCERPT_INSTRUCTION,
+} from "../constants/llm-instructions";
+
 export async function analyzeBusinessSection(
   text: string,
   openai: OpenAI,
   companyName: string // Şirket adını dinamik olarak almak için ticker parametresi ekliyoruz
 ): Promise<BusinessAnalysis> {
-  const prompt = `Analyze this Business section for ${
-    companyName || "the company"
-  }:
+  const prompt = `${EXCERPT_INSTRUCTION}
+  Analyze this Business section for ${companyName || "the company"}:
 1. What does the company do? (specific products/services) Provide a comprehensive yet concise summary (4-5 sentences) and **a single direct quote (1-3 sentences) from the text that best captures the company's core business.**
 2. Key products by name and their market position. For each product, provide its name, market position (if any), and **a single direct quote (1-3 sentences) from the text that best describes it or its market position.**
 3. Geographic markets of operation.
@@ -24,6 +28,8 @@ export async function analyzeBusinessSection(
 8. **Analyze the company's overall business model.** Provide a concise description (2-3 sentences) of how the company generates revenue and creates value, along with **a single direct quote (1-3 sentences) from the text that best illustrates its business model.**
 
 Text: ${text}
+
+${JSON_EXCERPT_INSTRUCTION}
 
 Return JSON:
 {

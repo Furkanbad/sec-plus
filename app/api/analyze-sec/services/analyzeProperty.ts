@@ -5,12 +5,18 @@ import {
   PropertyAnalysis,
 } from "../schemas/propertyAnalysisSchema";
 
+import {
+  EXCERPT_INSTRUCTION,
+  JSON_EXCERPT_INSTRUCTION,
+} from "../constants/llm-instructions";
+
 export async function analyzePropertySection(
   text: string,
   openai: OpenAI,
   companyName: string
 ): Promise<PropertyAnalysis> {
-  const prompt = `Analyze the "Item 2 - Properties" section for ${companyName}. Provide a detailed analysis of the company's significant physical properties, facilities, and real estate holdings.
+  const prompt = `${EXCERPT_INSTRUCTION}
+  Analyze the "Item 2 - Properties" section for ${companyName}. Provide a detailed analysis of the company's significant physical properties, facilities, and real estate holdings.
 
   For the **Properties Overview**, include a concise, 1-2 sentence 'excerpt' directly from the text that explicitly supports or introduces the key information in that section. This excerpt will be used for verification purposes.
 
@@ -36,6 +42,8 @@ export async function analyzePropertySection(
       *   Highlight any particularly noteworthy points, strengths, or potential concerns related to the company's properties (e.g., significant property portfolio, reliance on key facilities, geographic concentration, significant lease obligations, underutilized assets). If none are identified, return an array with "None identified".
 
   Text: ${text}
+
+  ${JSON_EXCERPT_INSTRUCTION}
 
   Return JSON. CRITICAL: For the "status" field, you MUST use EXACTLY one of these four values: "Owned", "Leased", "Mixed", "Not specified". Do not use any other variations like "Owned/Leased", "Own", "Lease", etc.
   

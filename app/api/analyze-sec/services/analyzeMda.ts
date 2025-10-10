@@ -3,6 +3,11 @@ import { z } from "zod";
 import OpenAI from "openai";
 import { mdaAnalysisSchema, MDAAnalysis } from "../schemas/mdaAnalysisSchema";
 
+import {
+  EXCERPT_INSTRUCTION,
+  JSON_EXCERPT_INSTRUCTION,
+} from "../constants/llm-instructions";
+
 const MAX_MDNA_CHUNK_SIZE_TOKENS = 25000; // Güvenli bir chunk boyutu belirleyin, GPT-4o 128k destekler, ancak güvenlik için daha küçük tutulabilir.
 
 async function countTokens(str: string): Promise<number> {
@@ -22,7 +27,7 @@ const createSectionPrompt = (
   sectionConfig: SectionPromptConfig,
   chunkText: string,
   companyName: string
-) => `
+) => `${EXCERPT_INSTRUCTION}
   Analyze the following text from the Management's Discussion and Analysis (MD&A) section for ${
     companyName || "the company"
   }.
@@ -39,7 +44,7 @@ const createSectionPrompt = (
   \`\`\`
   ${chunkText}
   \`\`\`
-
+  ${JSON_EXCERPT_INSTRUCTION}
   Return JSON.
   `;
 

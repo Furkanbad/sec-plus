@@ -12,27 +12,36 @@ import {
   RiskAnalysis,
 } from "../schemas";
 
-// SEC'den gelen dosyalama bilgileri
+/**
+ * SEC'den gelen dosyalama bilgileri
+ * API'den dönen veriyle uyumlu interface
+ */
 export interface SECFiling {
   id: string;
+  cik: string;
   ticker: string;
-  filingType: string;
-  filedAt: string;
-  fiscalYear: number;
-  htmlUrl: string;
   companyName: string;
+  filingType: string;
+  filedAt: string; // ISO timestamp (örn: "2024-11-01T16:30:00-05:00")
+  filingDate: string; // Formatlanmış tarih (örn: "2024-11-01")
+  fiscalYear: number;
+  htmlUrl: string; // linkToFilingDetails olarak gelir API'den
   reportDate: string;
   accessionNumber: string;
 }
 
-// Analiz için gelen istek gövdesi
+/**
+ * Analiz için gelen istek gövdesi
+ */
 export interface SECSearchRequest {
   ticker: string;
   filingType: string;
   year?: number;
 }
 
-// Genel analiz yapısı
+/**
+ * Genel analiz yapısı
+ */
 export interface SECAnalysis {
   filing: SECFiling;
   sections: {
@@ -45,12 +54,14 @@ export interface SECAnalysis {
     financials?: FinancialAnalysis;
     controls?: ControlsAnalysis;
     directors?: DirectorsAnalysis;
-    [key: string]: any; // Dizin imzası
+    [key: string]: any; // Dinamik bölümler için
   };
   generatedAt: string;
 }
 
-// Frontend'e dönen nihai sonuç
+/**
+ * Frontend'e dönen nihai sonuç
+ */
 export interface SECAnalysisResult {
   analysis: SECAnalysis;
   fullOriginalHtml: string;
@@ -61,7 +72,3 @@ export interface SECAnalysisResult {
     companyName: string;
   };
 }
-
-// ... Diğer tüm `BusinessAnalysis`, `RiskAnalysis` vb. detaylı tipler buraya taşınabilir.
-// Veya bu detaylı tipler `app/api/analyze-sec/schemas` dizinindeki kendi şema dosyalarından
-// türetilerek dışa aktarılabilir ve burada birleştirilebilir.

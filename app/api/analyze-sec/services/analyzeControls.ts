@@ -4,14 +4,19 @@ import OpenAI from "openai";
 import {
   controlsAnalysisSchema,
   ControlsAnalysis,
-} from "../schemas/controlsSchema"; // Doğru yolu ayarla
+} from "../schemas/controlsSchema";
+import {
+  EXCERPT_INSTRUCTION,
+  JSON_EXCERPT_INSTRUCTION,
+} from "../constants/llm-instructions";
 
 export async function analyzeControlsSection(
   text: string,
   openai: OpenAI,
   companyName: string
 ): Promise<ControlsAnalysis | null> {
-  const prompt = `From the "Controls and Procedures" or "Internal Control Over Financial Reporting" section for ${
+  const prompt = `${EXCERPT_INSTRUCTION}
+  From the "Controls and Procedures" or "Internal Control Over Financial Reporting" section for ${
     companyName || "the company"
   }, provide a detailed analysis of the company's internal controls.
 
@@ -45,6 +50,10 @@ export async function analyzeControlsSection(
       *   **(No excerpt specifically requested for this field as it involves synthesis).**
 
   Text: ${text}
+
+  ${JSON_EXCERPT_INSTRUCTION}
+  
+  Return JSON with EXACT quotes in all excerpt fields.;
 
   Return JSON. Ensure all monetary values include currency (e.g., "$X million"), percentages include "%", and periods are clearly stated (e.g., "FY20XX").
   All 'excerpt' fields in the JSON structure below must contain a direct quote (1-3 sentences) or a specific "No direct excerpt found." string if genuinely absent from the text. For fields where an excerpt is not specified in the JSON, do not generate one.
