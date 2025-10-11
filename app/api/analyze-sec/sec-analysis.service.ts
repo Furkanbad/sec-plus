@@ -430,13 +430,14 @@ export class SECAnalysisService {
       {
         condition: sectionsData.financials?.text,
         analyze: () =>
-          analyzeServices.analyzeFinancialSection(
+          analyzeServices.analyzeTwoLayerFinancials(
             sectionsData.financials.text,
+            sectionsData.exhibits?.text || "",
+            xbrlData,
             openai,
-            companyName,
-            xbrlFormatted // XBRL verilerini gönder
+            companyName
           ),
-        key: "financials",
+        key: "twoLayerFinancials",
       },
       // {
       //   condition:
@@ -565,6 +566,73 @@ export class SECAnalysisService {
     if (analysis.sections.properties) {
       const properties = analysis.sections.properties as any;
       addId(properties.propertiesOverview, "excerpt", "excerptId");
+    }
+
+    // TwoLayerFinancials section
+    if (analysis.sections.twoLayerFinancials) {
+      const twoLayer = analysis.sections.twoLayerFinancials as any;
+
+      // Narrative Analysis
+      if (twoLayer.narrativeAnalysis) {
+        const narrative = twoLayer.narrativeAnalysis;
+
+        // Executive Summary
+        addId(narrative.executiveSummary, "excerpt", "excerptId");
+
+        // Key Insights
+        processArray(narrative.keyInsights, "excerpt", "excerptId");
+
+        // Accounting Policies
+        processArray(narrative.accountingPolicies, "excerpt", "excerptId");
+
+        // Footnotes
+        if (narrative.footnotes) {
+          addId(narrative.footnotes.revenueRecognition, "excerpt", "excerptId");
+          addId(
+            narrative.footnotes.stockBasedCompensation,
+            "excerpt",
+            "excerptId"
+          );
+          addId(narrative.footnotes.incomeTaxes, "excerpt", "excerptId");
+          addId(narrative.footnotes.debtObligations, "excerpt", "excerptId");
+          addId(narrative.footnotes.leases, "excerpt", "excerptId");
+          addId(narrative.footnotes.fairValue, "excerpt", "excerptId");
+        }
+
+        // Commitments & Contingencies
+        processArray(
+          narrative.commitmentsContingencies,
+          "excerpt",
+          "excerptId"
+        );
+
+        // Related Party Transactions
+        if (narrative.relatedPartyTransactions?.transactions) {
+          processArray(
+            narrative.relatedPartyTransactions.transactions,
+            "excerpt",
+            "excerptId"
+          );
+        }
+
+        // Subsequent Events
+        processArray(narrative.subsequentEvents, "excerpt", "excerptId");
+
+        // Segment Information
+        if (narrative.segmentInformation?.segments) {
+          processArray(
+            narrative.segmentInformation.segments,
+            "excerpt",
+            "excerptId"
+          );
+        }
+
+        // Risks Identified
+        processArray(narrative.risksIdentified, "excerpt", "excerptId");
+
+        // Overall Assessment
+        addId(narrative.overallAssessment, "excerpt", "excerptId");
+      }
     }
 
     // Legal section

@@ -7,3 +7,4 @@ export * from "./analyzeMarketRisk";
 export * from "./analyzeFinancials";
 export * from "./analyzeControls";
 export * from "./analyzeDirectors";
+export * from "./analyzeTwoLayerFinancials";

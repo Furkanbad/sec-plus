@@ -91,14 +91,13 @@ export class XBRLApiClient {
     console.log(`📊 Fetching XBRL data from: ${xbrlUrl}`);
 
     try {
-      // Parametre adı "xbrl-url" olmalı (tire ile, camelCase değil)
       const url = `${this.baseUrl}?xbrl-url=${encodeURIComponent(xbrlUrl)}`;
 
       const response = await fetch(url, {
         method: "GET",
         headers: {
           Accept: "application/json",
-          Authorization: this.apiKey, // Token'ı header'da gönder
+          Authorization: this.apiKey,
         },
       });
 
@@ -117,7 +116,6 @@ export class XBRLApiClient {
         topLevelKeys: Object.keys(data).slice(0, 10),
       });
 
-      // İlk revenue item'ı sample olarak logla
       if (
         data.StatementsOfIncome
           ?.RevenueFromContractWithCustomerExcludingAssessedTax
@@ -143,28 +141,18 @@ export class XBRLApiClient {
   /**
    * XBRL verilerinden ana finansal metrikleri çıkarır
    */
-  extractKeyMetrics(xbrlData: XBRLFinancialData): {
-    revenue: { current: number; previous: number } | null;
-    netIncome: { current: number; previous: number } | null;
-    totalAssets: { current: number; previous: number } | null;
-    totalLiabilities: { current: number; previous: number } | null;
-    operatingCashFlow: { current: number; previous: number } | null;
-    periods: string[];
-  } {
+  extractKeyMetrics(xbrlData: XBRLFinancialData): any {
     console.log("📊 [extractKeyMetrics] Starting extraction...");
 
-    // Helper: XBRL array'inden en son 2 period'u çıkar
     const extractLastTwoPeriods = (
       items: any[]
     ): { current: number; previous: number } | null => {
-      if (!items || items.length < 2) {
-        console.log(`   ⚠️ Not enough items: ${items?.length || 0}`);
-        return null;
-      }
+      if (!items || items.length < 2) return null;
 
-      // Period'ları tarih sırasına göre sırala (en yeni en başta)
       const sortedItems = [...items]
-        .filter((item) => item.period && item.value !== undefined)
+        .filter(
+          (item) => item.period && item.value !== undefined && !item.segment
+        )
         .sort((a, b) => {
           const dateA =
             a.period.endDate || a.period.instant || a.period.startDate;
@@ -173,53 +161,29 @@ export class XBRLApiClient {
           return dateB.localeCompare(dateA);
         });
 
-      if (sortedItems.length < 2) {
-        console.log(`   ⚠️ Not enough sorted items: ${sortedItems.length}`);
-        return null;
-      }
-
-      // Segment olmayan (toplam) değerleri bul
-      const mainItems = sortedItems.filter((item) => !item.segment);
-
-      if (mainItems.length >= 2) {
-        const result = {
-          current: parseFloat(mainItems[0].value),
-          previous: parseFloat(mainItems[1].value),
-        };
-        console.log(`   ✓ Found main items:`, result);
-        return result;
-      }
-
-      // Fallback: Tüm itemleri kullan
       if (sortedItems.length >= 2) {
-        const result = {
+        return {
           current: parseFloat(sortedItems[0].value),
           previous: parseFloat(sortedItems[1].value),
         };
-        console.log(`   ⚠️ Using fallback with segments:`, result);
-        return result;
       }
-
       return null;
     };
 
-    // Helper: Birden fazla field adını dene
     const extractFromFields = (statement: any, fields: string[]) => {
-      console.log(`   🔍 Trying fields: ${fields.join(", ")}`);
       for (const field of fields) {
-        if (statement && statement[field]) {
-          console.log(
-            `   ✓ Found field: ${field} with ${statement[field].length} items`
-          );
+        if (statement?.[field]) {
           const result = extractLastTwoPeriods(statement[field]);
-          if (result) return result;
+          if (result) {
+            console.log(`   ✓ Found ${field}:`, result);
+            return result;
+          }
         }
       }
-      console.log(`   ❌ No matching fields found`);
       return null;
     };
 
-    // Period listesini oluştur
+    // Extract periods
     const periods: string[] = [];
     if (xbrlData.StatementsOfIncome) {
       const allPeriods = new Set<string>();
@@ -237,40 +201,152 @@ export class XBRLApiClient {
         }
       });
       periods.push(...Array.from(allPeriods).sort().reverse().slice(0, 2));
-      console.log(`📅 Periods found: ${periods.join(", ")}`);
+    }
+
+    console.log("📊 Extracting Income Statement...");
+    const revenue = extractFromFields(xbrlData.StatementsOfIncome, [
+      "Revenues",
+      "RevenueFromContractWithCustomerExcludingAssessedTax",
+      "SalesRevenueNet",
+    ]);
+
+    const cogs = extractFromFields(xbrlData.StatementsOfIncome, [
+      "CostOfGoodsAndServicesSold",
+      "CostOfRevenue",
+      "CostOfGoodsSold",
+    ]);
+
+    const grossProfit = extractFromFields(xbrlData.StatementsOfIncome, [
+      "GrossProfit",
+    ]);
+
+    const opex = extractFromFields(xbrlData.StatementsOfIncome, [
+      "OperatingExpenses",
+      "OperatingExpensesAbstract",
+    ]);
+
+    const operatingIncome = extractFromFields(xbrlData.StatementsOfIncome, [
+      "OperatingIncomeLoss",
+      "IncomeLossFromContinuingOperationsBeforeIncomeTaxesExtraordinaryItemsNoncontrollingInterest",
+    ]);
+
+    const netIncome = extractFromFields(xbrlData.StatementsOfIncome, [
+      "NetIncomeLoss",
+      "ProfitLoss",
+    ]);
+
+    const eps = extractFromFields(xbrlData.StatementsOfIncome, [
+      "EarningsPerShareDiluted",
+      "EarningsPerShareBasic",
+    ]);
+
+    console.log("📊 Extracting Balance Sheet...");
+    const totalAssets = extractFromFields(xbrlData.BalanceSheets, ["Assets"]);
+
+    const currentAssets = extractFromFields(xbrlData.BalanceSheets, [
+      "AssetsCurrent",
+    ]);
+
+    const totalLiabilities = extractFromFields(xbrlData.BalanceSheets, [
+      "Liabilities",
+    ]);
+
+    const currentLiabilities = extractFromFields(xbrlData.BalanceSheets, [
+      "LiabilitiesCurrent",
+    ]);
+
+    const equity = extractFromFields(xbrlData.BalanceSheets, [
+      "StockholdersEquity",
+      "StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest",
+    ]);
+
+    const cash = extractFromFields(xbrlData.BalanceSheets, [
+      "CashAndCashEquivalentsAtCarryingValue",
+      "Cash",
+    ]);
+
+    const debt = extractFromFields(xbrlData.BalanceSheets, [
+      "LongTermDebt",
+      "DebtCurrent",
+    ]);
+
+    console.log("📊 Extracting Cash Flow...");
+    const operatingCashFlow = extractFromFields(
+      xbrlData.StatementsOfCashFlows,
+      ["NetCashProvidedByUsedInOperatingActivities"]
+    );
+
+    const investingCashFlow = extractFromFields(
+      xbrlData.StatementsOfCashFlows,
+      ["NetCashProvidedByUsedInInvestingActivities"]
+    );
+
+    const financingCashFlow = extractFromFields(
+      xbrlData.StatementsOfCashFlows,
+      ["NetCashProvidedByUsedInFinancingActivities"]
+    );
+
+    const capex = extractFromFields(xbrlData.StatementsOfCashFlows, [
+      "PaymentsToAcquirePropertyPlantAndEquipment",
+      "CapitalExpenditures",
+    ]);
+
+    // Calculate Free Cash Flow if possible
+    let freeCashFlow = null;
+    if (operatingCashFlow && capex) {
+      freeCashFlow = {
+        current: operatingCashFlow.current - Math.abs(capex.current),
+        previous: operatingCashFlow.previous - Math.abs(capex.previous),
+      };
     }
 
     const metrics = {
-      revenue: extractFromFields(xbrlData.StatementsOfIncome, [
-        "Revenues",
-        "RevenueFromContractWithCustomerExcludingAssessedTax",
-        "SalesRevenueNet",
-        "RevenueFromContractWithCustomerIncludingAssessedTax",
-      ]),
-      netIncome: extractFromFields(xbrlData.StatementsOfIncome, [
-        "NetIncomeLoss",
-        "ProfitLoss",
-        "NetIncomeLossAvailableToCommonStockholdersBasic",
-      ]),
-      totalAssets: extractFromFields(xbrlData.BalanceSheets, [
-        "Assets",
-        "AssetsCurrent",
-      ]),
-      totalLiabilities: extractFromFields(xbrlData.BalanceSheets, [
-        "Liabilities",
-        "LiabilitiesCurrent",
-      ]),
-      operatingCashFlow: extractFromFields(xbrlData.StatementsOfCashFlows, [
-        "NetCashProvidedByUsedInOperatingActivities",
-        "NetCashProvidedByUsedInOperatingActivitiesContinuingOperations",
-      ]),
+      // Income Statement
+      revenue,
+      cogs,
+      grossProfit,
+      opex,
+      operatingIncome,
+      netIncome,
+      eps,
+
+      // Balance Sheet
+      totalAssets,
+      currentAssets,
+      totalLiabilities,
+      currentLiabilities,
+      equity,
+      cash,
+      debt,
+
+      // Cash Flow
+      operatingCashFlow,
+      investingCashFlow,
+      financingCashFlow,
+      capex,
+      freeCashFlow,
+
       periods,
     };
 
+    console.log("📊 [extractKeyMetrics] Metrics summary:");
+    console.log(`   - Revenue: ${revenue ? "✅" : "❌"}`);
+    console.log(`   - COGS: ${cogs ? "✅" : "❌"}`);
+    console.log(`   - Gross Profit: ${grossProfit ? "✅" : "❌"}`);
+    console.log(`   - Operating Income: ${operatingIncome ? "✅" : "❌"}`);
+    console.log(`   - Net Income: ${netIncome ? "✅" : "❌"}`);
+    console.log(`   - EPS: ${eps ? "✅" : "❌"}`);
+    console.log(`   - Total Assets: ${totalAssets ? "✅" : "❌"}`);
+    console.log(`   - Current Assets: ${currentAssets ? "✅" : "❌"}`);
+    console.log(`   - Total Liabilities: ${totalLiabilities ? "✅" : "❌"}`);
     console.log(
-      "📊 [extractKeyMetrics] Final metrics:",
-      JSON.stringify(metrics, null, 2)
+      `   - Current Liabilities: ${currentLiabilities ? "✅" : "❌"}`
     );
+    console.log(`   - Equity: ${equity ? "✅" : "❌"}`);
+    console.log(`   - Operating Cash Flow: ${operatingCashFlow ? "✅" : "❌"}`);
+    console.log(`   - Investing Cash Flow: ${investingCashFlow ? "✅" : "❌"}`);
+    console.log(`   - Financing Cash Flow: ${financingCashFlow ? "✅" : "❌"}`);
+
     return metrics;
   }
 

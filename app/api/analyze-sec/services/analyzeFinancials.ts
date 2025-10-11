@@ -11,14 +11,44 @@ import {
   JSON_EXCERPT_INSTRUCTION,
 } from "../constants/llm-instructions";
 
-// Token limitleri
-const MAX_CHUNK_SIZE_TOKENS = 15000;
+// Token limitleri - Daha büyük chunk için artırıldı
+const MAX_CHUNK_SIZE_TOKENS = 50000; // GPT-4o 128k destekler
 
 // Token sayma
 const countTokens = (str: string) => Math.ceil(str.length / 4);
 
 // Delay fonksiyonu
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// Deep merge helper - Nested objeleri düzgün birleştirir
+const deepMerge = (target: any, source: any): any => {
+  if (!source) return target;
+  if (!target) return source;
+
+  const output = { ...target };
+
+  for (const key in source) {
+    if (
+      source[key] &&
+      typeof source[key] === "object" &&
+      !Array.isArray(source[key])
+    ) {
+      output[key] = deepMerge(target[key] || {}, source[key]);
+    } else if (Array.isArray(source[key])) {
+      // Array'leri birleştir ve deduplicate et
+      output[key] = [...(target[key] || []), ...source[key]];
+    } else if (
+      source[key] !== undefined &&
+      source[key] !== null &&
+      source[key] !== "N/A"
+    ) {
+      // Sadece meaningful değerleri al
+      output[key] = source[key];
+    }
+  }
+
+  return output;
+};
 
 export async function analyzeFinancialSection(
   text: string,
@@ -30,70 +60,38 @@ export async function analyzeFinancialSection(
 
 You are analyzing Financial Statements for ${companyName}.
 
-**CRITICAL: DATA SOURCE PRIORITIZATION**
-
-You have TWO data sources:
-1. **XBRL Structured Data** (below): Precise, machine-readable financial figures
-2. **Narrative Text** (below): Contextual explanations and management analysis
-
-**INSTRUCTIONS:**
-✅ **ALWAYS prioritize XBRL data for ALL numerical values** (revenue, expenses, assets, liabilities, cash flow, margins, etc.)
-✅ **Use narrative text for:**
-   - Business context and reasons for changes
-   - Management commentary and insights
-   - Qualitative factors
-   - Forward-looking statements
-   - All excerpts (MANDATORY)
-✅ **Cross-reference both sources** for comprehensive analysis
-⚠️ **If XBRL lacks a specific metric**, extract from narrative text
-⚠️ **ALL excerpts MUST be direct quotes from NARRATIVE TEXT**, never from XBRL data
+**CRITICAL INSTRUCTIONS:**
+1. **ALWAYS use XBRL data for ALL numerical values** (if provided below)
+2. **EVERY field is REQUIRED - no field should be undefined or null**
+3. **All excerpts MUST be direct quotes from NARRATIVE TEXT** (never from XBRL)
+4. **Use exact format**: "$XXX.XXB" or "$XXX.XXB billion" for money, "X.XX%" for percentages
 
 ${
   xbrlData
-    ? `\n=== XBRL STRUCTURED DATA (USE FOR EXACT NUMBERS) ===\n${xbrlData}\n=== END XBRL DATA ===\n`
-    : "⚠️ XBRL data not available - extract all metrics from narrative text\n"
+    ? `\n=== XBRL STRUCTURED DATA ===\n${xbrlData}\n=== END XBRL ===\n`
+    : "⚠️ XBRL not available - extract all from narrative\n"
 }
 
-=== NARRATIVE TEXT (USE FOR CONTEXT AND EXCERPTS) ===
+=== NARRATIVE TEXT ===
 ${chunkText}
-=== END NARRATIVE TEXT ===
+=== END TEXT ===
 
 ${JSON_EXCERPT_INSTRUCTION}
 
-**OUTPUT REQUIREMENTS:**
-- All monetary values: Include currency and scale (e.g., "$45.2B", "$1.23M")
-- All percentages: Include "%" symbol (e.g., "15.5%")
-- All excerpts: Direct quotes from NARRATIVE TEXT only
-- Year-over-year comparisons: Provide where applicable
-- Period labels: Include (e.g., "FY2024", "Q3 2024")
+**REQUIRED OUTPUT - FILL ALL FIELDS:**
 
-**CRITICAL FORMAT REQUIREMENTS:**
-- Monetary values can use EITHER format:
-  * Short: "$391.04B", "$7.75B", "$123.22B" (preferred)
-  * Long: "$391.04 billion", "$7.75 billion", "$123.22 billion"
-- Percentages: "2.02%", "-3.36%" (include % and handle negatives)
-- Periods: "FY2024", "FY2023", "Q3 2024", etc.
-
-**ACCEPTED FORMATS:**
-✅ "$391.04B" or "$391.04 billion"
-✅ "$7.75M" or "$7.75 million"  
-✅ "$123.22K" or "$123.22 thousand"
-✅ "2.02%" or "-3.36%"
-❌ "391 billion" (missing $)
-❌ "2.02" (missing %)
-❌ "$391B" (missing decimal for billions)
-
-Return JSON matching this exact structure:
 {
   "title": "Detailed Profitability Analysis and Year-over-Year Comparison",
+  
   "revenueAnalysis": {
     "currentYear": {"value": "$391.04B", "period": "FY2024"},
     "previousYear": {"value": "$383.29B", "period": "FY2023"},
     "changeAbsolute": "$7.75B",
     "changePercentage": "2.02%",
-    "drivers": "Brief explanation of revenue changes",
-    "excerpt": "MANDATORY direct quote from narrative text"
+    "drivers": "Brief explanation",
+    "excerpt": "Direct quote from narrative"
   },
+  
   "cogsAndGrossProfitAnalysis": {
     "cogs": {
       "currentYear": {"value": "$210.35B", "period": "FY2024"},
@@ -104,42 +102,50 @@ Return JSON matching this exact structure:
       "previousYear": {"value": "$169.15B", "period": "FY2023"},
       "changeAbsolute": "$11.53B",
       "changePercentage": "6.82%",
-      "excerpt": "MANDATORY direct quote"
+      "excerpt": "Direct quote"
     },
-    "factors": "Explanation of COGS and margin factors",
-    "excerpt": "MANDATORY direct quote"
+    "factors": "Explanation",
+    "excerpt": "Direct quote"
   },
+  
   "operatingExpensesAnalysis": {
     "totalOperatingExpenses": {
       "currentYear": {"value": "$57.47B", "period": "FY2024"},
       "previousYear": {"value": "$54.85B", "period": "FY2023"},
       "changeAbsolute": "$2.62B",
       "changePercentage": "4.77%",
-      "excerpt": "MANDATORY direct quote"
+      "excerpt": "Direct quote"
     },
     "sgna": {
       "currentYear": {"value": "$26.10B", "period": "FY2024"},
       "previousYear": {"value": "$24.93B", "period": "FY2023"}
     },
-    "efficiencyComment": "Comment on operational efficiency",
-    "excerpt": "MANDATORY direct quote"
+    "rd": {
+      "currentYear": {"value": "$31.37B", "period": "FY2024"},
+      "previousYear": {"value": "$29.92B", "period": "FY2023"}
+    },
+    "efficiencyComment": "Comment",
+    "excerpt": "Direct quote"
   },
+  
   "operatingIncomeEBITAnalysis": {
     "currentYear": {"value": "$123.22B", "period": "FY2024"},
     "previousYear": {"value": "$114.30B", "period": "FY2023"},
     "changeAbsolute": "$8.92B",
     "changePercentage": "7.81%",
-    "trendComment": "Comment on profitability trend",
-    "excerpt": "MANDATORY direct quote"
+    "trendComment": "Comment",
+    "excerpt": "Direct quote"
   },
+  
   "ebitdaAnalysis": {
     "currentYear": {"value": "$134.66B", "period": "FY2024"},
     "previousYear": {"value": "$125.82B", "period": "FY2023"},
     "changeAbsolute": "$8.84B",
     "changePercentage": "7.03%",
-    "significance": "Significance of EBITDA change",
-    "excerpt": "MANDATORY direct quote"
+    "significance": "Significance",
+    "excerpt": "Direct quote"
   },
+  
   "interestAndOtherNonOperatingItems": {
     "interestExpense": {
       "currentYear": {"value": "$3.75B", "period": "FY2024"},
@@ -149,33 +155,37 @@ Return JSON matching this exact structure:
       "currentYear": {"value": "$269M", "period": "FY2024"},
       "previousYear": {"value": "-$565M", "period": "FY2023"}
     },
-    "impactComment": "Impact on pre-tax income",
-    "excerpt": "MANDATORY direct quote"
+    "impactComment": "Impact",
+    "excerpt": "Direct quote"
   },
+  
   "incomeTaxExpenseAnalysis": {
     "currentYear": {"value": "$29.75B", "period": "FY2024"},
     "previousYear": {"value": "$16.74B", "period": "FY2023"},
     "effectiveTaxRateCurrentYear": "24.1%",
     "effectiveTaxRatePreviousYear": "14.7%",
-    "taxRateComment": "Comment on tax rate changes",
-    "excerpt": "MANDATORY direct quote"
+    "taxRateComment": "Comment",
+    "excerpt": "Direct quote"
   },
+  
   "netIncomeAnalysis": {
     "currentYear": {"value": "$93.74B", "period": "FY2024"},
     "previousYear": {"value": "$97.00B", "period": "FY2023"},
     "changeAbsolute": "-$3.26B",
     "changePercentage": "-3.36%",
-    "contributors": "Key contributors to changes",
-    "excerpt": "MANDATORY direct quote"
+    "contributors": "Key contributors",
+    "excerpt": "Direct quote"
   },
+  
   "epsDilutedAnalysis": {
     "currentYear": {"value": "$6.08", "period": "FY2024"},
     "previousYear": {"value": "$6.13", "period": "FY2023"},
     "changeAbsolute": "-$0.05",
     "changePercentage": "-0.82%",
-    "factorsBeyondNetIncome": "Factors affecting EPS (e.g., buybacks)",
-    "excerpt": "MANDATORY direct quote"
+    "factorsBeyondNetIncome": "Factors",
+    "excerpt": "Direct quote"
   },
+  
   "profitabilityRatios": {
     "grossProfitMargin": {"currentYear": "46.2%", "previousYear": "44.1%"},
     "operatingMargin": {"currentYear": "31.5%", "previousYear": "29.8%"},
@@ -183,29 +193,30 @@ Return JSON matching this exact structure:
     "ebitdaMargin": {"currentYear": "34.4%", "previousYear": "32.8%"},
     "roa": {"currentYear": "25.6%", "previousYear": "28.5%"},
     "roe": {"currentYear": "164.5%", "previousYear": "156.1%"},
-    "trendComment": "Comment on margin trends",
-    "excerpt": "MANDATORY direct quote"
+    "trendComment": "Comment",
+    "excerpt": "Direct quote"
   },
+  
   "noteworthyItemsImpacts": [
     {
-      "description": "Description of unusual/one-time item",
+      "description": "Description",
       "type": "unusual_item",
       "financialImpact": "$10.3B",
       "recurring": false,
-      "excerpt": "MANDATORY direct quote from narrative text"
+      "excerpt": "Direct quote"
     }
   ],
-  "keyInsights": "Concise summary of 2-3 most significant findings",
-  "keyInsightsExcerpt": "MANDATORY direct quote"
+  
+  "keyInsights": "2-3 most significant findings",
+  "keyInsightsExcerpt": "Direct quote"
 }
 
 **REMEMBER:**
-- Extract ALL numbers from XBRL data (if available)
+- Extract numbers from XBRL (if available)
 - Extract ALL excerpts from narrative text
-- Never quote XBRL data in excerpts
-- Calculate percentage changes accurately
-- Include currency symbols and units
-- Use exact format: "$XXX.XXB" not "XXX billion" or "XXX,XXX million"`;
+- FILL EVERY FIELD - no undefined/null values
+- Calculate percentages accurately
+- Use format: "$XXX.XXB" and "X.XX%"`;
 
   let fullAnalysis: Partial<FinancialAnalysis> = {};
   const textTokens = countTokens(text);
@@ -265,7 +276,7 @@ Return JSON matching this exact structure:
             messages: [{ role: "user", content: chunkPrompt }],
             response_format: { type: "json_object" },
             temperature: 0.1,
-            max_tokens: 4000,
+            max_tokens: 8000,
           });
 
           const rawParsedContent = JSON.parse(
@@ -280,6 +291,8 @@ Return JSON matching this exact structure:
                 netIncomeAnalysis: rawParsedContent.netIncomeAnalysis,
                 operatingIncomeEBITAnalysis:
                   rawParsedContent.operatingIncomeEBITAnalysis,
+                hasCogsAnalysis: !!rawParsedContent.cogsAndGrossProfitAnalysis,
+                hasProfitabilityRatios: !!rawParsedContent.profitabilityRatios,
               },
               null,
               2
@@ -289,27 +302,11 @@ Return JSON matching this exact structure:
           if (i === 0) {
             fullAnalysis = rawParsedContent;
           } else {
-            // Merge noteworthy items
-            if (rawParsedContent.noteworthyItemsImpacts?.length > 0) {
-              if (!fullAnalysis.noteworthyItemsImpacts) {
-                fullAnalysis.noteworthyItemsImpacts = [];
-              }
-              const newItems = rawParsedContent.noteworthyItemsImpacts.filter(
-                (item: any) => item.type !== "none_identified"
-              );
-              fullAnalysis.noteworthyItemsImpacts.push(...newItems);
-            }
-
-            // Merge key insights
-            if (
-              rawParsedContent.keyInsights &&
-              rawParsedContent.keyInsights !== "None identified."
-            ) {
-              fullAnalysis.keyInsights =
-                (fullAnalysis.keyInsights || "") +
-                " " +
-                rawParsedContent.keyInsights;
-            }
+            // Deep merge tüm alanları
+            fullAnalysis = deepMerge(fullAnalysis, rawParsedContent);
+            console.log(
+              `[analyzeFinancialSection] ✓ Merged chunk ${i + 1} data`
+            );
           }
         } catch (chunkError: any) {
           console.error(
@@ -332,29 +329,41 @@ Return JSON matching this exact structure:
       );
 
       const prompt = promptTemplate(text);
-      const result = await openai.chat.completions.create({
-        model: "gpt-4o",
-        messages: [{ role: "user", content: prompt }],
-        response_format: { type: "json_object" },
-        temperature: 0.1,
-        max_tokens: 4000,
-      });
 
-      fullAnalysis = JSON.parse(result.choices[0].message.content || "{}");
+      try {
+        const result = await openai.chat.completions.create({
+          model: "gpt-4o",
+          messages: [{ role: "user", content: prompt }],
+          response_format: { type: "json_object" },
+          temperature: 0.1,
+          max_tokens: 8000, // Daha büyük response için artırıldı
+        });
 
-      console.log(
-        `[analyzeFinancialSection] AI response (single request):`,
-        JSON.stringify(
-          {
-            revenueAnalysis: fullAnalysis.revenueAnalysis,
-            netIncomeAnalysis: fullAnalysis.netIncomeAnalysis,
-            operatingIncomeEBITAnalysis:
-              fullAnalysis.operatingIncomeEBITAnalysis,
-          },
-          null,
-          2
-        )
-      );
+        fullAnalysis = JSON.parse(result.choices[0].message.content || "{}");
+
+        console.log(
+          `[analyzeFinancialSection] AI response (single request):`,
+          JSON.stringify(
+            {
+              revenueAnalysis: fullAnalysis.revenueAnalysis,
+              netIncomeAnalysis: fullAnalysis.netIncomeAnalysis,
+              operatingIncomeEBITAnalysis:
+                fullAnalysis.operatingIncomeEBITAnalysis,
+              hasCogsAnalysis: !!fullAnalysis.cogsAndGrossProfitAnalysis,
+              hasProfitabilityRatios: !!fullAnalysis.profitabilityRatios,
+              hasNoteworthyItems: !!fullAnalysis.noteworthyItemsImpacts,
+            },
+            null,
+            2
+          )
+        );
+      } catch (singleError: any) {
+        console.error(
+          "[analyzeFinancialSection] Error in single request:",
+          singleError.message
+        );
+        throw singleError;
+      }
     }
 
     // Validate with Zod

@@ -18,17 +18,14 @@ const MetricRow = ({
   change,
   changePercent,
 }: any) => {
-  // Add safety checks
-  if (!current && !previous) return null;
-
   const isNegative = changePercent?.includes("-");
   return (
     <div className="flex items-center justify-between py-2 border-b border-gray-100 last:border-0">
       <span className="text-sm text-gray-700">{label}</span>
       <div className="flex items-center gap-4">
         <div className="text-right">
-          <div className="font-semibold text-gray-900">{current || "N/A"}</div>
-          <div className="text-xs text-gray-500">Prev: {previous || "N/A"}</div>
+          <div className="font-semibold text-gray-900">{current}</div>
+          <div className="text-xs text-gray-500">Prev: {previous}</div>
         </div>
         {changePercent && (
           <span
@@ -46,25 +43,11 @@ const MetricRow = ({
   );
 };
 
-// Helper to check if a section has valid data
-const hasValidData = (obj: any): boolean => {
-  if (!obj) return false;
-  return Object.values(obj).some(
-    (value: any) => value?.current && value.current !== "N/A"
-  );
-};
-
 export function TwoLayerFinancialsSection({
   data,
   onExcerptClick,
 }: TwoLayerFinancialsSectionProps) {
   const [activeTab, setActiveTab] = useState<"xbrl" | "narrative">("xbrl");
-
-  // Check if we have valid XBRL data
-  const hasIncomeStatement = hasValidData(data.xbrlMetrics?.incomeStatement);
-  const hasBalanceSheet = hasValidData(data.xbrlMetrics?.balanceSheet);
-  const hasCashFlow = hasValidData(data.xbrlMetrics?.cashFlow);
-  const hasAnyXBRLData = hasIncomeStatement || hasBalanceSheet || hasCashFlow;
 
   return (
     <CollapsibleCard
@@ -110,232 +93,171 @@ export function TwoLayerFinancialsSection({
       </div>
 
       {/* XBRL Tab */}
-      {activeTab === "xbrl" && (
+      {activeTab === "xbrl" && data.xbrlMetrics && (
         <div className="space-y-6">
-          {!hasAnyXBRLData && (
-            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-              <p className="text-sm text-gray-700">
-                ⚠️ No XBRL data available. This filing may not contain
-                structured financial data, or the data extraction failed. Please
-                check the Narrative Analysis tab for text-based insights.
-              </p>
-            </div>
-          )}
-
           {/* Income Statement */}
-          {hasIncomeStatement && data.xbrlMetrics?.incomeStatement && (
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-              <h4 className="font-semibold text-gray-900 mb-3">
-                Income Statement
-              </h4>
-              <div className="space-y-1">
-                <MetricRow
-                  label="Revenue"
-                  current={data.xbrlMetrics.incomeStatement.revenue?.current}
-                  previous={data.xbrlMetrics.incomeStatement.revenue?.previous}
-                  changePercent={
-                    data.xbrlMetrics.incomeStatement.revenue?.changePercentage
-                  }
-                />
-                <MetricRow
-                  label="Gross Profit"
-                  current={
-                    data.xbrlMetrics.incomeStatement.grossProfit?.current
-                  }
-                  previous={
-                    data.xbrlMetrics.incomeStatement.grossProfit?.previous
-                  }
-                  changePercent={
-                    data.xbrlMetrics.incomeStatement.grossProfit
-                      ?.changePercentage
-                  }
-                />
-                <MetricRow
-                  label="Operating Income"
-                  current={
-                    data.xbrlMetrics.incomeStatement.operatingIncome?.current
-                  }
-                  previous={
-                    data.xbrlMetrics.incomeStatement.operatingIncome?.previous
-                  }
-                  changePercent={
-                    data.xbrlMetrics.incomeStatement.operatingIncome
-                      ?.changePercentage
-                  }
-                />
-                <MetricRow
-                  label="Net Income"
-                  current={data.xbrlMetrics.incomeStatement.netIncome?.current}
-                  previous={
-                    data.xbrlMetrics.incomeStatement.netIncome?.previous
-                  }
-                  changePercent={
-                    data.xbrlMetrics.incomeStatement.netIncome?.changePercentage
-                  }
-                />
-                <MetricRow
-                  label="EPS (Diluted)"
-                  current={data.xbrlMetrics.incomeStatement.eps?.current}
-                  previous={data.xbrlMetrics.incomeStatement.eps?.previous}
-                  changePercent={
-                    data.xbrlMetrics.incomeStatement.eps?.changePercentage
-                  }
-                />
-              </div>
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+            <h4 className="font-semibold text-gray-900 mb-3">
+              Income Statement
+            </h4>
+            <div className="space-y-1">
+              <MetricRow
+                label="Revenue"
+                current={data.xbrlMetrics.incomeStatement.revenue.current}
+                previous={data.xbrlMetrics.incomeStatement.revenue.previous}
+                changePercent={
+                  data.xbrlMetrics.incomeStatement.revenue.changePercentage
+                }
+              />
+              <MetricRow
+                label="Gross Profit"
+                current={data.xbrlMetrics.incomeStatement.grossProfit.current}
+                previous={data.xbrlMetrics.incomeStatement.grossProfit.previous}
+                changePercent={
+                  data.xbrlMetrics.incomeStatement.grossProfit.changePercentage
+                }
+              />
+              <MetricRow
+                label="Operating Income"
+                current={
+                  data.xbrlMetrics.incomeStatement.operatingIncome.current
+                }
+                previous={
+                  data.xbrlMetrics.incomeStatement.operatingIncome.previous
+                }
+                changePercent={
+                  data.xbrlMetrics.incomeStatement.operatingIncome
+                    .changePercentage
+                }
+              />
+              <MetricRow
+                label="Net Income"
+                current={data.xbrlMetrics.incomeStatement.netIncome.current}
+                previous={data.xbrlMetrics.incomeStatement.netIncome.previous}
+                changePercent={
+                  data.xbrlMetrics.incomeStatement.netIncome.changePercentage
+                }
+              />
+              <MetricRow
+                label="EPS (Diluted)"
+                current={data.xbrlMetrics.incomeStatement.eps.current}
+                previous={data.xbrlMetrics.incomeStatement.eps.previous}
+                changePercent={
+                  data.xbrlMetrics.incomeStatement.eps.changePercentage
+                }
+              />
             </div>
-          )}
+          </div>
 
           {/* Balance Sheet */}
-          {hasBalanceSheet && data.xbrlMetrics?.balanceSheet && (
-            <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
-              <h4 className="font-semibold text-gray-900 mb-3">
-                Balance Sheet
-              </h4>
-              <div className="space-y-1">
-                <MetricRow
-                  label="Total Assets"
-                  current={data.xbrlMetrics.balanceSheet.totalAssets?.current}
-                  previous={data.xbrlMetrics.balanceSheet.totalAssets?.previous}
-                  changePercent={
-                    data.xbrlMetrics.balanceSheet.totalAssets?.changePercentage
-                  }
-                />
-                <MetricRow
-                  label="Current Assets"
-                  current={data.xbrlMetrics.balanceSheet.currentAssets?.current}
-                  previous={
-                    data.xbrlMetrics.balanceSheet.currentAssets?.previous
-                  }
-                  changePercent={
-                    data.xbrlMetrics.balanceSheet.currentAssets
-                      ?.changePercentage
-                  }
-                />
-                <MetricRow
-                  label="Total Liabilities"
-                  current={
-                    data.xbrlMetrics.balanceSheet.totalLiabilities?.current
-                  }
-                  previous={
-                    data.xbrlMetrics.balanceSheet.totalLiabilities?.previous
-                  }
-                  changePercent={
-                    data.xbrlMetrics.balanceSheet.totalLiabilities
-                      ?.changePercentage
-                  }
-                />
-                <MetricRow
-                  label="Shareholders' Equity"
-                  current={
-                    data.xbrlMetrics.balanceSheet.shareholdersEquity?.current
-                  }
-                  previous={
-                    data.xbrlMetrics.balanceSheet.shareholdersEquity?.previous
-                  }
-                  changePercent={
-                    data.xbrlMetrics.balanceSheet.shareholdersEquity
-                      ?.changePercentage
-                  }
-                />
-              </div>
+          <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
+            <h4 className="font-semibold text-gray-900 mb-3">Balance Sheet</h4>
+            <div className="space-y-1">
+              <MetricRow
+                label="Total Assets"
+                current={data.xbrlMetrics.balanceSheet.totalAssets.current}
+                previous={data.xbrlMetrics.balanceSheet.totalAssets.previous}
+                changePercent={
+                  data.xbrlMetrics.balanceSheet.totalAssets.changePercentage
+                }
+              />
+              <MetricRow
+                label="Current Assets"
+                current={data.xbrlMetrics.balanceSheet.currentAssets.current}
+                previous={data.xbrlMetrics.balanceSheet.currentAssets.previous}
+                changePercent={
+                  data.xbrlMetrics.balanceSheet.currentAssets.changePercentage
+                }
+              />
+              <MetricRow
+                label="Total Liabilities"
+                current={data.xbrlMetrics.balanceSheet.totalLiabilities.current}
+                previous={
+                  data.xbrlMetrics.balanceSheet.totalLiabilities.previous
+                }
+                changePercent={
+                  data.xbrlMetrics.balanceSheet.totalLiabilities
+                    .changePercentage
+                }
+              />
+              <MetricRow
+                label="Shareholders' Equity"
+                current={
+                  data.xbrlMetrics.balanceSheet.shareholdersEquity.current
+                }
+                previous={
+                  data.xbrlMetrics.balanceSheet.shareholdersEquity.previous
+                }
+                changePercent={
+                  data.xbrlMetrics.balanceSheet.shareholdersEquity
+                    .changePercentage
+                }
+              />
             </div>
-          )}
+          </div>
 
           {/* Cash Flow */}
-          {hasCashFlow && data.xbrlMetrics?.cashFlow && (
-            <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-              <h4 className="font-semibold text-gray-900 mb-3">Cash Flow</h4>
-              <div className="space-y-1">
-                <MetricRow
-                  label="Operating Cash Flow"
-                  current={data.xbrlMetrics.cashFlow.operatingCashFlow?.current}
-                  previous={
-                    data.xbrlMetrics.cashFlow.operatingCashFlow?.previous
-                  }
-                  changePercent={
-                    data.xbrlMetrics.cashFlow.operatingCashFlow
-                      ?.changePercentage
-                  }
-                />
-                <MetricRow
-                  label="Investing Cash Flow"
-                  current={data.xbrlMetrics.cashFlow.investingCashFlow?.current}
-                  previous={
-                    data.xbrlMetrics.cashFlow.investingCashFlow?.previous
-                  }
-                  changePercent={
-                    data.xbrlMetrics.cashFlow.investingCashFlow
-                      ?.changePercentage
-                  }
-                />
-                <MetricRow
-                  label="Financing Cash Flow"
-                  current={data.xbrlMetrics.cashFlow.financingCashFlow?.current}
-                  previous={
-                    data.xbrlMetrics.cashFlow.financingCashFlow?.previous
-                  }
-                  changePercent={
-                    data.xbrlMetrics.cashFlow.financingCashFlow
-                      ?.changePercentage
-                  }
-                />
-              </div>
+          <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+            <h4 className="font-semibold text-gray-900 mb-3">Cash Flow</h4>
+            <div className="space-y-1">
+              <MetricRow
+                label="Operating Cash Flow"
+                current={data.xbrlMetrics.cashFlow.operatingCashFlow.current}
+                previous={data.xbrlMetrics.cashFlow.operatingCashFlow.previous}
+                changePercent={
+                  data.xbrlMetrics.cashFlow.operatingCashFlow.changePercentage
+                }
+              />
+              <MetricRow
+                label="Investing Cash Flow"
+                current={data.xbrlMetrics.cashFlow.investingCashFlow.current}
+                previous={data.xbrlMetrics.cashFlow.investingCashFlow.previous}
+                changePercent={
+                  data.xbrlMetrics.cashFlow.investingCashFlow.changePercentage
+                }
+              />
+              <MetricRow
+                label="Financing Cash Flow"
+                current={data.xbrlMetrics.cashFlow.financingCashFlow.current}
+                previous={data.xbrlMetrics.cashFlow.financingCashFlow.previous}
+                changePercent={
+                  data.xbrlMetrics.cashFlow.financingCashFlow.changePercentage
+                }
+              />
             </div>
-          )}
+          </div>
 
           {/* Ratios */}
-          {hasAnyXBRLData &&
-            data.xbrlMetrics?.liquidityRatios &&
-            data.xbrlMetrics?.profitabilityRatios && (
-              <div className="grid grid-cols-3 gap-4">
-                {data.xbrlMetrics.liquidityRatios.currentRatio?.current !==
-                  "N/A" && (
-                  <div className="bg-gray-50 rounded-lg p-3 border border-gray-200">
-                    <div className="text-xs text-gray-600 mb-1">
-                      Current Ratio
-                    </div>
-                    <div className="text-lg font-bold">
-                      {data.xbrlMetrics.liquidityRatios.currentRatio.current}
-                    </div>
-                    <div className="text-xs text-gray-500">
-                      Prev:{" "}
-                      {data.xbrlMetrics.liquidityRatios.currentRatio.previous}
-                    </div>
-                  </div>
-                )}
-                {data.xbrlMetrics.profitabilityRatios.grossMargin?.current !==
-                  "N/A" && (
-                  <div className="bg-gray-50 rounded-lg p-3 border border-gray-200">
-                    <div className="text-xs text-gray-600 mb-1">
-                      Gross Margin
-                    </div>
-                    <div className="text-lg font-bold">
-                      {data.xbrlMetrics.profitabilityRatios.grossMargin.current}
-                    </div>
-                    <div className="text-xs text-gray-500">
-                      Prev:{" "}
-                      {
-                        data.xbrlMetrics.profitabilityRatios.grossMargin
-                          .previous
-                      }
-                    </div>
-                  </div>
-                )}
-                {data.xbrlMetrics.profitabilityRatios.netMargin?.current !==
-                  "N/A" && (
-                  <div className="bg-gray-50 rounded-lg p-3 border border-gray-200">
-                    <div className="text-xs text-gray-600 mb-1">Net Margin</div>
-                    <div className="text-lg font-bold">
-                      {data.xbrlMetrics.profitabilityRatios.netMargin.current}
-                    </div>
-                    <div className="text-xs text-gray-500">
-                      Prev:{" "}
-                      {data.xbrlMetrics.profitabilityRatios.netMargin.previous}
-                    </div>
-                  </div>
-                )}
+          <div className="grid grid-cols-3 gap-4">
+            <div className="bg-gray-50 rounded-lg p-3 border border-gray-200">
+              <div className="text-xs text-gray-600 mb-1">Current Ratio</div>
+              <div className="text-lg font-bold">
+                {data.xbrlMetrics.liquidityRatios.currentRatio.current}
               </div>
-            )}
+              <div className="text-xs text-gray-500">
+                Prev: {data.xbrlMetrics.liquidityRatios.currentRatio.previous}
+              </div>
+            </div>
+            <div className="bg-gray-50 rounded-lg p-3 border border-gray-200">
+              <div className="text-xs text-gray-600 mb-1">Gross Margin</div>
+              <div className="text-lg font-bold">
+                {data.xbrlMetrics.profitabilityRatios.grossMargin.current}
+              </div>
+              <div className="text-xs text-gray-500">
+                Prev:{" "}
+                {data.xbrlMetrics.profitabilityRatios.grossMargin.previous}
+              </div>
+            </div>
+            <div className="bg-gray-50 rounded-lg p-3 border border-gray-200">
+              <div className="text-xs text-gray-600 mb-1">Net Margin</div>
+              <div className="text-lg font-bold">
+                {data.xbrlMetrics.profitabilityRatios.netMargin.current}
+              </div>
+              <div className="text-xs text-gray-500">
+                Prev: {data.xbrlMetrics.profitabilityRatios.netMargin.previous}
+              </div>
+            </div>
+          </div>
         </div>
       )}
 

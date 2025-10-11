@@ -2,19 +2,6 @@
 import { load } from "cheerio";
 import { SECAnalysis } from "@/app/api/analyze-sec/models/sec-analysis";
 
-// Artık aşağıdaki şemalara doğrudan gerek kalmadığı için kaldırıldı.
-// import {
-//   BusinessAnalysis,
-//   RiskAnalysis,
-//   LegalAnalysis,
-//   MDAAnalysis,
-//   MarketRiskAnalysis,
-//   PropertyAnalysis,
-//   FinancialAnalysis,
-//   ControlsAnalysis,
-//   DirectorsAnalysis,
-// } from "@/app/api/analyze-sec/schemas";
-
 export function fixImageUrls(htmlContent: string, secUrl: string): string {
   const $ = load(htmlContent);
   const baseUrl = secUrl.substring(0, secUrl.lastIndexOf("/"));
@@ -31,24 +18,35 @@ export function fixImageUrls(htmlContent: string, secUrl: string): string {
 }
 
 /**
- * Enhanced normalize text - handles special characters and formats
+ * Enhanced normalize text - handles special characters and HTML entities
  */
 function normalizeText(text: string): string {
-  return text
-    .toLowerCase()
-    .replace(/\s+/g, " ")
-    .replace(/[""]/g, '"')
-    .replace(/['']/g, "'")
-    .replace(/—/g, "-")
-    .replace(/–/g, "-")
-    .replace(/€/g, "eur") // Euro symbol
-    .replace(/£/g, "gbp") // Pound symbol
-    .replace(/®/g, "") // Registered trademark
-    .replace(/™/g, "") // Trademark
-    .replace(/©/g, "") // Copyright
-    .replace(/\u00a0/g, " ") // Non-breaking space
-    .replace(/[\u2000-\u200f]/g, " ") // Various unicode spaces
-    .trim();
+  return (
+    text
+      .toLowerCase()
+      // HTML entity'leri temizle
+      .replace(/&nbsp;/g, " ")
+      .replace(/&#160;/g, " ")
+      .replace(/&#xa0;/g, " ")
+      .replace(/&amp;/g, "&")
+      .replace(/&lt;/g, "<")
+      .replace(/&gt;/g, ">")
+      .replace(/&quot;/g, '"')
+      .replace(/&#\d+;/g, " ") // Tüm numeric HTML entities
+      .replace(/\s+/g, " ")
+      .replace(/[""]/g, '"')
+      .replace(/['']/g, "'")
+      .replace(/—/g, "-")
+      .replace(/–/g, "-")
+      .replace(/€/g, "eur") // Euro symbol
+      .replace(/£/g, "gbp") // Pound symbol
+      .replace(/®/g, "") // Registered trademark
+      .replace(/™/g, "") // Trademark
+      .replace(/©/g, "") // Copyright
+      .replace(/\u00a0/g, " ") // Non-breaking space
+      .replace(/[\u2000-\u200f]/g, " ") // Various unicode spaces
+      .trim()
+  );
 }
 
 // Ortak regex ayırıcı deseni: bir veya daha fazla boşluk veya araya serpiştirilmiş HTML etiketleri

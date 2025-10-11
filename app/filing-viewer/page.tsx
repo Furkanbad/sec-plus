@@ -9,7 +9,7 @@ import { RiskSection } from "./components/RiskSection";
 import { PropertiesSection } from "./components/PropertiesSection";
 import { LegalSection } from "./components/LegalSection";
 import { MDASection } from "./components/MDASection";
-import { FinancialsSection } from "./components/FinancialsSection";
+import { TwoLayerFinancialsSection } from "./components/TwoLayerFinancialsSection";
 import { MarketRiskSection } from "./components/MarketRiskSection";
 import { ControlsSection } from "./components/ControlsSection";
 import { DirectorsSection } from "./components/DirectorsSection";
@@ -274,9 +274,9 @@ export default function FilingViewerPage() {
                 />
               )}
 
-              {data.analysis?.sections?.financials && (
-                <FinancialsSection
-                  data={data.analysis.sections.financials}
+              {data.analysis?.sections?.twoLayerFinancials && (
+                <TwoLayerFinancialsSection
+                  data={data.analysis.sections.twoLayerFinancials}
                   onExcerptClick={scrollToExcerpt}
                 />
               )}
