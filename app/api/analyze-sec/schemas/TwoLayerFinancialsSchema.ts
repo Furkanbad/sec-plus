@@ -1,181 +1,116 @@
-// app/api/analyze-sec/schemas/twoLayerFinancialsSchema.ts
+// app/api/analyze-sec/schemas/TwoLayerFinancialsSchema.ts
 import { z } from "zod";
 
 // ============================================
-// LAYER 1: XBRL-BASED QUANTITATIVE METRICS
+// ENTEGRE FİNANSAL KALEM ŞEMASI
+// Hem XBRL hem Narrative birleşik
 // ============================================
 
-const financialMetricSchema = z.object({
+const excerptSchema = z.string().min(1).default("No excerpt available.");
+
+// Temel metrik detayı (XBRL'den)
+const MetricDetailSchema = z.object({
   current: z.string().default("N/A"),
   previous: z.string().default("N/A"),
   change: z.string().optional(),
   changePercentage: z.string().optional(),
 });
 
-const financialRatioSchema = z.object({
-  current: z.string().default("N/A"),
-  previous: z.string().default("N/A"),
-  trend: z.enum(["improving", "declining", "stable"]).optional(),
+// İlgili politikalar
+const PolicySchema = z.object({
+  policy: z.string(),
+  description: z.string(),
+  changes: z.string().optional(),
+  excerpt: excerptSchema,
 });
 
-export const xbrlMetricsSchema = z.object({
-  title: z.literal("XBRL Financial Metrics").default("XBRL Financial Metrics"),
-
-  // Income Statement
-  incomeStatement: z.object({
-    revenue: financialMetricSchema,
-    costOfSales: financialMetricSchema,
-    grossProfit: financialMetricSchema,
-    operatingExpenses: financialMetricSchema,
-    operatingIncome: financialMetricSchema,
-    netIncome: financialMetricSchema,
-    eps: financialMetricSchema,
-  }),
-
-  // Balance Sheet
-  balanceSheet: z.object({
-    totalAssets: financialMetricSchema,
-    currentAssets: financialMetricSchema,
-    totalLiabilities: financialMetricSchema,
-    currentLiabilities: financialMetricSchema,
-    shareholdersEquity: financialMetricSchema,
-    cash: financialMetricSchema,
-    debt: financialMetricSchema.optional(),
-  }),
-
-  // Cash Flow
-  cashFlow: z.object({
-    operatingCashFlow: financialMetricSchema,
-    investingCashFlow: financialMetricSchema,
-    financingCashFlow: financialMetricSchema,
-    freeCashFlow: financialMetricSchema.optional(),
-    capitalExpenditures: financialMetricSchema.optional(),
-  }),
-
-  // Calculated Ratios
-  profitabilityRatios: z.object({
-    grossMargin: financialRatioSchema,
-    operatingMargin: financialRatioSchema,
-    netMargin: financialRatioSchema,
-    roe: financialRatioSchema,
-    roa: financialRatioSchema,
-  }),
-
-  liquidityRatios: z.object({
-    currentRatio: financialRatioSchema,
-    quickRatio: financialRatioSchema,
-    workingCapital: financialMetricSchema,
-  }),
-
-  leverageRatios: z.object({
-    debtToEquity: financialRatioSchema,
-    debtToAssets: financialRatioSchema,
-  }),
-});
-
-// ============================================
-// LAYER 2: TEXT-BASED NARRATIVE ANALYSIS
-// ============================================
-
-const excerptSchema = z.string().min(1).default("No excerpt available.");
-
-const narrativeInsightSchema = z.object({
-  topic: z.string(),
+// Önemli içgörüler
+const InsightSchema = z.object({
   summary: z.string(),
   significance: z.enum(["high", "medium", "low"]).default("medium"),
   excerpt: excerptSchema,
 });
 
-export const narrativeAnalysisSchema = z.object({
-  title: z
-    .literal("Financial Statements Narrative Analysis")
-    .default("Financial Statements Narrative Analysis"),
+// Riskler
+const RiskSchema = z.object({
+  description: z.string(),
+  mitigationStrategy: z.string().optional(),
+  excerpt: excerptSchema,
+});
 
-  // Executive Summary
+// ENTEGRE FİNANSAL KALEM
+const IntegratedFinancialItemSchema = z.object({
+  label: z.string(), // "Revenue", "Net Income", etc.
+
+  // XBRL verisi (nicel)
+  metric: MetricDetailSchema.optional(),
+
+  // Narrative özet (nitel)
+  narrativeSummary: z.string().optional(),
+
+  // İlgili muhasebe politikaları
+  relevantPolicies: z.array(PolicySchema).default([]),
+
+  // Önemli içgörüler
+  keyInsights: z.array(InsightSchema).default([]),
+
+  // Riskler
+  risks: z.array(RiskSchema).default([]),
+
+  // Genel excerpt
+  excerpt: excerptSchema.optional(),
+});
+
+// ============================================
+// ANA SCHEMA - ENTEGRE YAPIYLA
+// ============================================
+
+export const twoLayerFinancialsSchema = z.object({
+  // Özet
   executiveSummary: z.object({
     overview: z.string(),
     keyHighlights: z.array(z.string()),
-    excerpt: excerptSchema,
+    excerpt: excerptSchema.optional(),
   }),
 
-  // Significant Accounting Policies
-  accountingPolicies: z
-    .array(
-      z.object({
-        policy: z.string(),
-        description: z.string(),
-        changes: z.string().optional(),
-        impact: z.string().optional(),
-        excerpt: excerptSchema,
-      })
-    )
-    .default([]),
-
-  // Footnotes & Disclosures
-  footnotes: z.object({
-    // Revenue Recognition
-    revenueRecognition: z
-      .object({
-        summary: z.string(),
-        methodologies: z.array(z.string()).default([]),
-        excerpt: excerptSchema,
-      })
-      .optional(),
-
-    // Stock-Based Compensation
-    stockBasedCompensation: z
-      .object({
-        totalExpense: z.string().optional(),
-        vestingSchedule: z.string().optional(),
-        summary: z.string(),
-        excerpt: excerptSchema,
-      })
-      .optional(),
-
-    // Income Taxes
-    incomeTaxes: z
-      .object({
-        effectiveRate: z.string().optional(),
-        deferredTaxAssets: z.string().optional(),
-        deferredTaxLiabilities: z.string().optional(),
-        significantItems: z.array(z.string()).default([]),
-        excerpt: excerptSchema,
-      })
-      .optional(),
-
-    // Debt & Credit Facilities
-    debtObligations: z
-      .object({
-        summary: z.string(),
-        maturities: z.array(z.string()).default([]),
-        covenants: z.string().optional(),
-        excerpt: excerptSchema,
-      })
-      .optional(),
-
-    // Leases
-    leases: z
-      .object({
-        summary: z.string(),
-        operatingLeases: z.string().optional(),
-        financeLeases: z.string().optional(),
-        excerpt: excerptSchema,
-      })
-      .optional(),
-
-    // Fair Value Measurements
-    fairValue: z
-      .object({
-        summary: z.string(),
-        level1: z.string().optional(),
-        level2: z.string().optional(),
-        level3: z.string().optional(),
-        excerpt: excerptSchema,
-      })
-      .optional(),
+  // INCOME STATEMENT - Entegre
+  incomeStatement: z.object({
+    revenue: IntegratedFinancialItemSchema,
+    costOfSales: IntegratedFinancialItemSchema,
+    grossProfit: IntegratedFinancialItemSchema,
+    operatingExpenses: IntegratedFinancialItemSchema,
+    operatingIncome: IntegratedFinancialItemSchema,
+    netIncome: IntegratedFinancialItemSchema,
+    eps: IntegratedFinancialItemSchema,
   }),
 
-  // Commitments & Contingencies
+  // BALANCE SHEET - Entegre
+  balanceSheet: z.object({
+    totalAssets: IntegratedFinancialItemSchema,
+    currentAssets: IntegratedFinancialItemSchema,
+    totalLiabilities: IntegratedFinancialItemSchema,
+    currentLiabilities: IntegratedFinancialItemSchema,
+    shareholdersEquity: IntegratedFinancialItemSchema,
+    cash: IntegratedFinancialItemSchema,
+  }),
+
+  // CASH FLOW - Entegre
+  cashFlow: z.object({
+    operatingCashFlow: IntegratedFinancialItemSchema,
+    investingCashFlow: IntegratedFinancialItemSchema,
+    financingCashFlow: IntegratedFinancialItemSchema,
+  }),
+
+  // RATIOS - Entegre
+  ratios: z.object({
+    currentRatio: IntegratedFinancialItemSchema,
+    grossMargin: IntegratedFinancialItemSchema,
+    operatingMargin: IntegratedFinancialItemSchema,
+    netMargin: IntegratedFinancialItemSchema,
+    roe: IntegratedFinancialItemSchema,
+  }),
+
+  // COMMITMENTS & CONTINGENCIES
   commitmentsContingencies: z
     .array(
       z.object({
@@ -191,25 +126,19 @@ export const narrativeAnalysisSchema = z.object({
     )
     .default([]),
 
-  // Related Party Transactions
-  relatedPartyTransactions: z
-    .object({
-      hasMaterialTransactions: z.boolean(),
-      summary: z.string(),
-      transactions: z
-        .array(
-          z.object({
-            party: z.string(),
-            nature: z.string(),
-            amount: z.string().optional(),
-            excerpt: excerptSchema,
-          })
-        )
-        .default([]),
-    })
-    .optional(),
+  // ACCOUNTING POLICIES (Genel)
+  significantAccountingPolicies: z
+    .array(
+      z.object({
+        policy: z.string(),
+        description: z.string(),
+        changes: z.string().optional(),
+        excerpt: excerptSchema,
+      })
+    )
+    .default([]),
 
-  // Subsequent Events
+  // SUBSEQUENT EVENTS
   subsequentEvents: z
     .array(
       z.object({
@@ -221,59 +150,14 @@ export const narrativeAnalysisSchema = z.object({
     )
     .default([]),
 
-  // Segment Information
-  segmentInformation: z
-    .object({
-      hasSeparateSegments: z.boolean(),
-      segments: z
-        .array(
-          z.object({
-            name: z.string(),
-            revenue: z.string().optional(),
-            operatingIncome: z.string().optional(),
-            description: z.string(),
-            excerpt: excerptSchema,
-          })
-        )
-        .default([]),
-    })
-    .optional(),
-
-  // Key Insights
-  keyInsights: z.array(narrativeInsightSchema).default([]),
-
-  // Risks Identified
-  risksIdentified: z
-    .array(
-      z.object({
-        risk: z.string(),
-        description: z.string(),
-        mitigationStrategy: z.string().optional(),
-        excerpt: excerptSchema,
-      })
-    )
-    .default([]),
-
-  // Overall Assessment
+  // OVERALL ASSESSMENT
   overallAssessment: z.object({
     strengths: z.array(z.string()).default([]),
     concerns: z.array(z.string()).default([]),
     unusualItems: z.array(z.string()).default([]),
     summary: z.string(),
-    excerpt: excerptSchema,
+    excerpt: excerptSchema.optional(),
   }),
-});
-
-// ============================================
-// COMBINED SCHEMA
-// ============================================
-
-export const twoLayerFinancialsSchema = z.object({
-  // Layer 1: Pure numbers from XBRL
-  xbrlMetrics: xbrlMetricsSchema,
-
-  // Layer 2: Narrative insights from Item 8 + Item 15 text
-  narrativeAnalysis: narrativeAnalysisSchema,
 
   // Metadata
   analysisDate: z.string(),
@@ -285,5 +169,6 @@ export const twoLayerFinancialsSchema = z.object({
 });
 
 export type TwoLayerFinancials = z.infer<typeof twoLayerFinancialsSchema>;
-export type XBRLMetrics = z.infer<typeof xbrlMetricsSchema>;
-export type NarrativeAnalysis = z.infer<typeof narrativeAnalysisSchema>;
+export type IntegratedFinancialItem = z.infer<
+  typeof IntegratedFinancialItemSchema
+>;

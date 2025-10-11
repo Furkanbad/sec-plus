@@ -4,356 +4,358 @@ import OpenAI from "openai";
 import {
   twoLayerFinancialsSchema,
   TwoLayerFinancials,
-  XBRLMetrics,
-  NarrativeAnalysis,
 } from "../schemas/TwoLayerFinancialsSchema";
 import { JSON_EXCERPT_INSTRUCTION } from "../constants/llm-instructions";
 
 /**
- * LAYER 1: Analyze XBRL metrics
- * Pure quantitative analysis - no excerpts needed
+ * XBRL metriklerini LLM için formatla
  */
-async function analyzeXBRLMetrics(xbrlData: {
+function formatXBRLForPrompt(xbrlData: {
   raw: any;
   metrics: any;
   formatter: any;
-}): Promise<XBRLMetrics> {
+}): string {
   const { metrics, formatter } = xbrlData;
 
-  console.log(
-    "🔍 [analyzeXBRLMetrics] Available metrics:",
-    Object.keys(metrics)
-  );
+  let formatted = "=== XBRL KEY METRICS ===\n\n";
 
-  // Helper: Calculate change
-  const calcChange = (current: number, previous: number) => {
-    const absolute = current - previous;
-    const percentage =
-      previous !== 0
-        ? ((absolute / Math.abs(previous)) * 100).toFixed(2) + "%"
-        : "N/A";
-    return {
-      change: formatter.formatFinancialNumber(absolute),
-      changePercentage: percentage,
-    };
-  };
+  if (metrics.revenue) {
+    formatted += `Revenue:\n`;
+    formatted += `  Current: ${formatter.formatFinancialNumber(
+      metrics.revenue.current
+    )}\n`;
+    formatted += `  Previous: ${formatter.formatFinancialNumber(
+      metrics.revenue.previous
+    )}\n`;
+    const change = (
+      ((metrics.revenue.current - metrics.revenue.previous) /
+        Math.abs(metrics.revenue.previous)) *
+      100
+    ).toFixed(2);
+    formatted += `  Change: ${change}%\n\n`;
+  }
 
-  // Helper: Create metric with null safety
-  const createMetric = (
-    current: number | null | undefined,
-    previous: number | null | undefined
-  ) => {
-    if (current == null || previous == null) {
-      return {
-        current: "N/A",
-        previous: "N/A",
-        change: undefined,
-        changePercentage: undefined,
-      };
-    }
-    return {
-      current: formatter.formatFinancialNumber(current),
-      previous: formatter.formatFinancialNumber(previous),
-      ...calcChange(current, previous),
-    };
-  };
+  if (metrics.cogs) {
+    formatted += `Cost of Sales:\n`;
+    formatted += `  Current: ${formatter.formatFinancialNumber(
+      metrics.cogs.current
+    )}\n`;
+    formatted += `  Previous: ${formatter.formatFinancialNumber(
+      metrics.cogs.previous
+    )}\n\n`;
+  }
 
-  // Calculate ratios with null safety
-  const currentGrossMargin =
-    metrics.revenue?.current && metrics.cogs?.current
-      ? (
-          ((metrics.revenue.current - metrics.cogs.current) /
-            metrics.revenue.current) *
-          100
-        ).toFixed(1) + "%"
-      : "N/A";
-  const previousGrossMargin =
-    metrics.revenue?.previous && metrics.cogs?.previous
-      ? (
-          ((metrics.revenue.previous - metrics.cogs.previous) /
-            metrics.revenue.previous) *
-          100
-        ).toFixed(1) + "%"
-      : "N/A";
+  if (metrics.grossProfit || (metrics.revenue && metrics.cogs)) {
+    const gpCurrent =
+      metrics.grossProfit?.current ||
+      metrics.revenue.current - metrics.cogs.current;
+    const gpPrevious =
+      metrics.grossProfit?.previous ||
+      metrics.revenue.previous - metrics.cogs.previous;
+    formatted += `Gross Profit:\n`;
+    formatted += `  Current: ${formatter.formatFinancialNumber(gpCurrent)}\n`;
+    formatted += `  Previous: ${formatter.formatFinancialNumber(
+      gpPrevious
+    )}\n\n`;
+  }
 
-  const currentNetMargin =
-    metrics.revenue?.current && metrics.netIncome?.current
-      ? ((metrics.netIncome.current / metrics.revenue.current) * 100).toFixed(
-          1
-        ) + "%"
-      : "N/A";
-  const previousNetMargin =
-    metrics.revenue?.previous && metrics.netIncome?.previous
-      ? ((metrics.netIncome.previous / metrics.revenue.previous) * 100).toFixed(
-          1
-        ) + "%"
-      : "N/A";
+  if (metrics.opex) {
+    formatted += `Operating Expenses:\n`;
+    formatted += `  Current: ${formatter.formatFinancialNumber(
+      metrics.opex.current
+    )}\n`;
+    formatted += `  Previous: ${formatter.formatFinancialNumber(
+      metrics.opex.previous
+    )}\n\n`;
+  }
 
-  const currentCurrentRatio =
-    metrics.currentAssets?.current && metrics.currentLiabilities?.current
-      ? (
-          metrics.currentAssets.current / metrics.currentLiabilities.current
-        ).toFixed(2)
-      : "N/A";
-  const previousCurrentRatio =
-    metrics.currentAssets?.previous && metrics.currentLiabilities?.previous
-      ? (
-          metrics.currentAssets.previous / metrics.currentLiabilities.previous
-        ).toFixed(2)
-      : "N/A";
+  if (metrics.operatingIncome) {
+    formatted += `Operating Income:\n`;
+    formatted += `  Current: ${formatter.formatFinancialNumber(
+      metrics.operatingIncome.current
+    )}\n`;
+    formatted += `  Previous: ${formatter.formatFinancialNumber(
+      metrics.operatingIncome.previous
+    )}\n\n`;
+  }
 
-  // Log what we found
-  console.log("📊 [analyzeXBRLMetrics] Extracted data:");
-  console.log(
-    `   - Income Statement: ${metrics.revenue?.current ? "✅" : "❌"}`
-  );
-  console.log(
-    `   - Balance Sheet: ${metrics.totalAssets?.current ? "✅" : "❌"}`
-  );
-  console.log(
-    `   - Cash Flow: ${metrics.operatingCashFlow?.current ? "✅" : "❌"}`
-  );
+  if (metrics.netIncome) {
+    formatted += `Net Income:\n`;
+    formatted += `  Current: ${formatter.formatFinancialNumber(
+      metrics.netIncome.current
+    )}\n`;
+    formatted += `  Previous: ${formatter.formatFinancialNumber(
+      metrics.netIncome.previous
+    )}\n\n`;
+  }
 
+  if (metrics.eps) {
+    formatted += `EPS (Diluted):\n`;
+    formatted += `  Current: $${metrics.eps.current.toFixed(2)}\n`;
+    formatted += `  Previous: $${metrics.eps.previous.toFixed(2)}\n\n`;
+  }
+
+  if (metrics.totalAssets) {
+    formatted += `Total Assets:\n`;
+    formatted += `  Current: ${formatter.formatFinancialNumber(
+      metrics.totalAssets.current
+    )}\n`;
+    formatted += `  Previous: ${formatter.formatFinancialNumber(
+      metrics.totalAssets.previous
+    )}\n\n`;
+  }
+
+  if (metrics.currentAssets) {
+    formatted += `Current Assets:\n`;
+    formatted += `  Current: ${formatter.formatFinancialNumber(
+      metrics.currentAssets.current
+    )}\n`;
+    formatted += `  Previous: ${formatter.formatFinancialNumber(
+      metrics.currentAssets.previous
+    )}\n\n`;
+  }
+
+  if (metrics.totalLiabilities) {
+    formatted += `Total Liabilities:\n`;
+    formatted += `  Current: ${formatter.formatFinancialNumber(
+      metrics.totalLiabilities.current
+    )}\n`;
+    formatted += `  Previous: ${formatter.formatFinancialNumber(
+      metrics.totalLiabilities.previous
+    )}\n\n`;
+  }
+
+  if (metrics.currentLiabilities) {
+    formatted += `Current Liabilities:\n`;
+    formatted += `  Current: ${formatter.formatFinancialNumber(
+      metrics.currentLiabilities.current
+    )}\n`;
+    formatted += `  Previous: ${formatter.formatFinancialNumber(
+      metrics.currentLiabilities.previous
+    )}\n\n`;
+  }
+
+  if (metrics.equity) {
+    formatted += `Shareholders' Equity:\n`;
+    formatted += `  Current: ${formatter.formatFinancialNumber(
+      metrics.equity.current
+    )}\n`;
+    formatted += `  Previous: ${formatter.formatFinancialNumber(
+      metrics.equity.previous
+    )}\n\n`;
+  }
+
+  if (metrics.cash) {
+    formatted += `Cash and Cash Equivalents:\n`;
+    formatted += `  Current: ${formatter.formatFinancialNumber(
+      metrics.cash.current
+    )}\n`;
+    formatted += `  Previous: ${formatter.formatFinancialNumber(
+      metrics.cash.previous
+    )}\n\n`;
+  }
+
+  if (metrics.operatingCashFlow) {
+    formatted += `Operating Cash Flow:\n`;
+    formatted += `  Current: ${formatter.formatFinancialNumber(
+      metrics.operatingCashFlow.current
+    )}\n`;
+    formatted += `  Previous: ${formatter.formatFinancialNumber(
+      metrics.operatingCashFlow.previous
+    )}\n\n`;
+  }
+
+  if (metrics.investingCashFlow) {
+    formatted += `Investing Cash Flow:\n`;
+    formatted += `  Current: ${formatter.formatFinancialNumber(
+      metrics.investingCashFlow.current
+    )}\n`;
+    formatted += `  Previous: ${formatter.formatFinancialNumber(
+      metrics.investingCashFlow.previous
+    )}\n\n`;
+  }
+
+  if (metrics.financingCashFlow) {
+    formatted += `Financing Cash Flow:\n`;
+    formatted += `  Current: ${formatter.formatFinancialNumber(
+      metrics.financingCashFlow.current
+    )}\n`;
+    formatted += `  Previous: ${formatter.formatFinancialNumber(
+      metrics.financingCashFlow.previous
+    )}\n\n`;
+  }
+
+  formatted += "=== END XBRL ===\n";
+  return formatted;
+}
+
+/**
+ * Empty XBRL metrics when not available
+ */
+function createEmptyXBRLMetrics() {
   return {
-    title: "XBRL Financial Metrics",
-
-    incomeStatement: {
-      revenue: createMetric(
-        metrics.revenue?.current,
-        metrics.revenue?.previous
-      ),
-      costOfSales: createMetric(metrics.cogs?.current, metrics.cogs?.previous),
-      grossProfit: createMetric(
-        metrics.revenue?.current && metrics.cogs?.current
-          ? metrics.revenue.current - metrics.cogs.current
-          : null,
-        metrics.revenue?.previous && metrics.cogs?.previous
-          ? metrics.revenue.previous - metrics.cogs.previous
-          : null
-      ),
-      operatingExpenses: createMetric(
-        metrics.opex?.current,
-        metrics.opex?.previous
-      ),
-      operatingIncome: createMetric(
-        metrics.operatingIncome?.current,
-        metrics.operatingIncome?.previous
-      ),
-      netIncome: createMetric(
-        metrics.netIncome?.current,
-        metrics.netIncome?.previous
-      ),
-      eps: {
-        current: metrics.eps?.current?.toString() || "N/A",
-        previous: metrics.eps?.previous?.toString() || "N/A",
-        change:
-          metrics.eps?.current && metrics.eps?.previous
-            ? (metrics.eps.current - metrics.eps.previous).toFixed(2)
-            : undefined,
-        changePercentage:
-          metrics.eps?.current && metrics.eps?.previous
-            ? (
-                ((metrics.eps.current - metrics.eps.previous) /
-                  Math.abs(metrics.eps.previous)) *
-                100
-              ).toFixed(2) + "%"
-            : undefined,
-      },
-    },
-
-    balanceSheet: {
-      totalAssets: createMetric(
-        metrics.totalAssets?.current,
-        metrics.totalAssets?.previous
-      ),
-      currentAssets: createMetric(
-        metrics.currentAssets?.current,
-        metrics.currentAssets?.previous
-      ),
-      totalLiabilities: createMetric(
-        metrics.totalLiabilities?.current,
-        metrics.totalLiabilities?.previous
-      ),
-      currentLiabilities: createMetric(
-        metrics.currentLiabilities?.current,
-        metrics.currentLiabilities?.previous
-      ),
-      shareholdersEquity: createMetric(
-        metrics.equity?.current,
-        metrics.equity?.previous
-      ),
-      cash: createMetric(metrics.cash?.current, metrics.cash?.previous),
-      debt: metrics.debt?.current
-        ? createMetric(metrics.debt.current, metrics.debt.previous)
-        : undefined,
-    },
-
-    cashFlow: {
-      operatingCashFlow: createMetric(
-        metrics.operatingCashFlow?.current,
-        metrics.operatingCashFlow?.previous
-      ),
-      investingCashFlow: createMetric(
-        metrics.investingCashFlow?.current,
-        metrics.investingCashFlow?.previous
-      ),
-      financingCashFlow: createMetric(
-        metrics.financingCashFlow?.current,
-        metrics.financingCashFlow?.previous
-      ),
-      freeCashFlow: metrics.freeCashFlow?.current
-        ? createMetric(
-            metrics.freeCashFlow.current,
-            metrics.freeCashFlow.previous
-          )
-        : undefined,
-      capitalExpenditures: metrics.capex?.current
-        ? createMetric(metrics.capex.current, metrics.capex.previous)
-        : undefined,
-    },
-
-    profitabilityRatios: {
-      grossMargin: {
-        current: currentGrossMargin,
-        previous: previousGrossMargin,
-        trend:
-          currentGrossMargin !== "N/A" &&
-          previousGrossMargin !== "N/A" &&
-          parseFloat(currentGrossMargin) > parseFloat(previousGrossMargin)
-            ? "improving"
-            : currentGrossMargin !== "N/A" && previousGrossMargin !== "N/A"
-            ? "declining"
-            : undefined,
-      },
-      operatingMargin: { current: "N/A", previous: "N/A" },
-      netMargin: {
-        current: currentNetMargin,
-        previous: previousNetMargin,
-        trend:
-          currentNetMargin !== "N/A" &&
-          previousNetMargin !== "N/A" &&
-          parseFloat(currentNetMargin) > parseFloat(previousNetMargin)
-            ? "improving"
-            : currentNetMargin !== "N/A" && previousNetMargin !== "N/A"
-            ? "declining"
-            : undefined,
-      },
-      roe: { current: "N/A", previous: "N/A" },
-      roa: { current: "N/A", previous: "N/A" },
-    },
-
-    liquidityRatios: {
-      currentRatio: {
-        current: currentCurrentRatio,
-        previous: previousCurrentRatio,
-        trend:
-          currentCurrentRatio !== "N/A" &&
-          previousCurrentRatio !== "N/A" &&
-          parseFloat(currentCurrentRatio) > parseFloat(previousCurrentRatio)
-            ? "improving"
-            : currentCurrentRatio !== "N/A" && previousCurrentRatio !== "N/A"
-            ? "declining"
-            : undefined,
-      },
-      quickRatio: { current: "N/A", previous: "N/A" },
-      workingCapital: createMetric(
-        metrics.currentAssets?.current && metrics.currentLiabilities?.current
-          ? metrics.currentAssets.current - metrics.currentLiabilities.current
-          : null,
-        metrics.currentAssets?.previous && metrics.currentLiabilities?.previous
-          ? metrics.currentAssets.previous - metrics.currentLiabilities.previous
-          : null
-      ),
-    },
-
-    leverageRatios: {
-      debtToEquity: { current: "N/A", previous: "N/A" },
-      debtToAssets: { current: "N/A", previous: "N/A" },
-    },
+    revenue: null,
+    cogs: null,
+    grossProfit: null,
+    opex: null,
+    operatingIncome: null,
+    netIncome: null,
+    eps: null,
+    totalAssets: null,
+    currentAssets: null,
+    totalLiabilities: null,
+    currentLiabilities: null,
+    equity: null,
+    cash: null,
+    operatingCashFlow: null,
+    investingCashFlow: null,
+    financingCashFlow: null,
   };
 }
 
 /**
- * LAYER 2: Analyze narrative text
- * Qualitative analysis with excerpts from Item 8 + Item 15 text
+ * ANA ANALİZ FONKSİYONU - ENTEGRE
  */
-async function analyzeNarrativeText(
-  combinedText: string,
+export async function analyzeTwoLayerFinancials(
+  item8Text: string,
+  item15Text: string,
+  xbrlData: { raw: any; metrics: any; formatter: any } | null,
   openai: OpenAI,
   companyName: string
-): Promise<NarrativeAnalysis> {
-  const prompt = `You are analyzing the Financial Statements section (Item 8 + Item 15) for ${companyName}.
+): Promise<TwoLayerFinancials | null> {
+  try {
+    console.log("📊 [Integrated Financial Analysis] Starting...");
+
+    const combinedText = `${item8Text}\n\n=== EXHIBITS & FOOTNOTES ===\n\n${item15Text}`;
+
+    // XBRL verilerini formatla
+    const xbrlFormatted = xbrlData
+      ? formatXBRLForPrompt(xbrlData)
+      : "⚠️ XBRL data not available - extract all information from narrative text.\n";
+
+    const prompt = `You are analyzing Financial Statements (Item 8 + Item 15) for ${companyName}.
 
 **CRITICAL INSTRUCTIONS:**
-1. Extract insights from the NARRATIVE TEXT ONLY (not from tables or numbers)
-2. ALL excerpts must be complete sentences with context
-3. Focus on: footnotes, disclosures, accounting policies, commitments, risks
-4. Look for management commentary, unusual items, significant changes
+1. **INTEGRATE**: For each financial item (Revenue, Net Income, etc.), combine:
+   - Quantitative data from XBRL metrics (if available)
+   - Qualitative explanations from narrative text
+   
+2. **CONTEXTUALIZE**: Explain what the numbers mean based on narrative context
 
-**GOOD EXCERPT EXAMPLES:**
-✅ "The Company recognized a one-time charge of $10.3 billion related to the State Aid Decision in fiscal 2024."
-✅ "Revenue is recognized at the point of sale for products and over time for services."
-✅ "The Company has purchase commitments totaling $147.7 billion over the next five years."
+3. **EXCERPTS ARE MANDATORY**: 
+   - Extract direct quotes from NARRATIVE TEXT ONLY (never from XBRL)
+   - Every policy, insight, and risk MUST have a supporting excerpt
+   - Use complete sentences (1-3 sentences)
 
-**BAD EXCERPT EXAMPLES:**
-❌ "Total revenue 391,035 &#160; 383,285" (table data)
-❌ "Net income $ 93,736" (just numbers)
+4. **FOCUS**: Prioritize:
+   - Significant accounting policies
+   - Unusual items or one-time charges
+   - Commitments and contingencies
+   - Identified risks
+   - Management commentary
 
-=== NARRATIVE TEXT ===
+5. **STRUCTURE**: Fill the JSON schema completely. For missing data, use appropriate defaults.
+
+${xbrlFormatted}
+
+=== NARRATIVE TEXT (ITEM 8 + ITEM 15) ===
 ${combinedText}
-=== END TEXT ===
+=== END NARRATIVE TEXT ===
 
 ${JSON_EXCERPT_INSTRUCTION}
 
-Return comprehensive JSON covering:
+Return comprehensive JSON following this structure:
+
 {
-  "title": "Financial Statements Narrative Analysis",
-  
   "executiveSummary": {
-    "overview": "2-3 sentence overview of key financial statement insights",
+    "overview": "2-3 sentence overview of financial health",
     "keyHighlights": ["Highlight 1", "Highlight 2"],
-    "excerpt": "Key sentence from management discussion"
+    "excerpt": "Key management statement from text"
   },
   
-  "accountingPolicies": [
-    {
-      "policy": "Revenue Recognition",
-      "description": "How revenue is recognized",
-      "changes": "Any changes from prior year",
-      "impact": "Impact of policy or change",
-      "excerpt": "Direct quote describing policy"
-    }
-  ],
+  "incomeStatement": {
+    "revenue": {
+      "label": "Revenue",
+      "metric": {
+        "current": "$391.04B",
+        "previous": "$383.29B",
+        "change": "$7.75B",
+        "changePercentage": "2.02%"
+      },
+      "narrativeSummary": "Brief explanation of revenue trends from narrative",
+      "relevantPolicies": [
+        {
+          "policy": "Revenue Recognition",
+          "description": "How revenue is recognized",
+          "changes": "Any changes from prior period",
+          "excerpt": "Direct quote describing policy"
+        }
+      ],
+      "keyInsights": [
+        {
+          "summary": "Significant finding about revenue",
+          "significance": "high",
+          "excerpt": "Direct quote supporting this insight"
+        }
+      ],
+      "risks": [
+        {
+          "description": "Risk related to revenue",
+          "mitigationStrategy": "How it's managed",
+          "excerpt": "Direct quote about risk"
+        }
+      ],
+      "excerpt": "Overall excerpt about revenue if available"
+    },
+    "costOfSales": { /* Same structure */ },
+    "grossProfit": { /* Same structure */ },
+    "operatingExpenses": { /* Same structure */ },
+    "operatingIncome": { /* Same structure */ },
+    "netIncome": {
+      "label": "Net Income",
+      "metric": { /* XBRL data */ },
+      "narrativeSummary": "Explanation of net income drivers",
+      "keyInsights": [
+        {
+          "summary": "E.g., One-time tax charge of $10.3B",
+          "significance": "high",
+          "excerpt": "Direct quote about the charge"
+        }
+      ],
+      /* ... */
+    },
+    "eps": { /* Same structure */ }
+  },
   
-  "footnotes": {
-    "revenueRecognition": {
-      "summary": "Revenue recognition methodology",
-      "methodologies": ["Method 1", "Method 2"],
-      "excerpt": "Direct quote"
+  "balanceSheet": {
+    "totalAssets": { /* Same integrated structure */ },
+    "currentAssets": { /* Same integrated structure */ },
+    "totalLiabilities": { /* Same integrated structure */ },
+    "currentLiabilities": { /* Same integrated structure */ },
+    "shareholdersEquity": { /* Same integrated structure */ },
+    "cash": { /* Same integrated structure */ }
+  },
+  
+  "cashFlow": {
+    "operatingCashFlow": { /* Same integrated structure */ },
+    "investingCashFlow": { /* Same integrated structure */ },
+    "financingCashFlow": { /* Same integrated structure */ }
+  },
+  
+  "ratios": {
+    "currentRatio": {
+      "label": "Current Ratio",
+      "metric": {
+        "current": "1.32",
+        "previous": "1.28"
+      },
+      "narrativeSummary": "Explanation of liquidity position",
+      "excerpt": "Direct quote if available"
     },
-    "stockBasedCompensation": {
-      "totalExpense": "$11.69B",
-      "summary": "Stock compensation details",
-      "excerpt": "Direct quote"
-    },
-    "incomeTaxes": {
-      "effectiveRate": "24.1%",
-      "significantItems": ["State Aid Decision"],
-      "excerpt": "Direct quote"
-    },
-    "debtObligations": {
-      "summary": "Debt structure and maturities",
-      "maturities": ["2025: $10B", "2026: $15B"],
-      "excerpt": "Direct quote"
-    },
-    "leases": {
-      "summary": "Lease commitments",
-      "excerpt": "Direct quote"
-    },
-    "fairValue": {
-      "summary": "Fair value measurement approach",
-      "excerpt": "Direct quote"
-    }
+    "grossMargin": { /* Same structure */ },
+    "operatingMargin": { /* Same structure */ },
+    "netMargin": { /* Same structure */ },
+    "roe": { /* Same structure */ }
   },
   
   "commitmentsContingencies": [
@@ -362,58 +364,25 @@ Return comprehensive JSON covering:
       "description": "Component manufacturing commitments",
       "amount": "$147.7B",
       "timing": "Next 5 years",
-      "excerpt": "Direct quote"
-    },
-    {
-      "type": "Legal Contingency",
-      "description": "State Aid case",
-      "amount": "$10.3B",
       "probability": "probable",
       "excerpt": "Direct quote"
     }
   ],
   
-  "relatedPartyTransactions": {
-    "hasMaterialTransactions": false,
-    "summary": "None material",
-    "transactions": []
-  },
+  "significantAccountingPolicies": [
+    {
+      "policy": "Stock-Based Compensation",
+      "description": "How SBC is accounted for",
+      "changes": "Any changes from prior year",
+      "excerpt": "Direct quote"
+    }
+  ],
   
   "subsequentEvents": [
     {
       "event": "Quarterly dividend declared",
       "date": "November 2024",
       "impact": "$0.25 per share",
-      "excerpt": "Direct quote"
-    }
-  ],
-  
-  "segmentInformation": {
-    "hasSeparateSegments": true,
-    "segments": [
-      {
-        "name": "Americas",
-        "revenue": "$169B",
-        "description": "Regional segment",
-        "excerpt": "Direct quote"
-      }
-    ]
-  },
-  
-  "keyInsights": [
-    {
-      "topic": "One-Time Tax Charge",
-      "summary": "Significant impact from State Aid case",
-      "significance": "high",
-      "excerpt": "Direct quote"
-    }
-  ],
-  
-  "risksIdentified": [
-    {
-      "risk": "Foreign Exchange Risk",
-      "description": "Currency volatility impact",
-      "mitigationStrategy": "Hedging program",
       "excerpt": "Direct quote"
     }
   ],
@@ -427,139 +396,39 @@ Return comprehensive JSON covering:
   }
 }`;
 
-  try {
+    console.log("   Calling OpenAI with integrated analysis prompt...");
+
     const result = await openai.chat.completions.create({
       model: "gpt-4o",
       messages: [{ role: "user", content: prompt }],
       response_format: { type: "json_object" },
       temperature: 0.1,
-      max_tokens: 8000,
+      max_tokens: 12000,
     });
 
     const parsed = JSON.parse(result.choices[0].message.content || "{}");
-    return parsed as NarrativeAnalysis;
-  } catch (error) {
-    console.error("[analyzeNarrativeText] Error:", error);
-    throw error;
-  }
-}
 
-/**
- * Helper: Create empty XBRL metrics structure when no data is available
- */
-function createEmptyXBRLMetrics(): XBRLMetrics {
-  const emptyMetric = {
-    current: "N/A",
-    previous: "N/A",
-    change: undefined,
-    changePercentage: undefined,
-  };
-
-  const emptyRatio = {
-    current: "N/A",
-    previous: "N/A",
-    trend: undefined as "improving" | "declining" | "stable" | undefined,
-  };
-
-  return {
-    title: "XBRL Financial Metrics",
-    incomeStatement: {
-      revenue: emptyMetric,
-      costOfSales: emptyMetric,
-      grossProfit: emptyMetric,
-      operatingExpenses: emptyMetric,
-      operatingIncome: emptyMetric,
-      netIncome: emptyMetric,
-      eps: emptyMetric,
-    },
-    balanceSheet: {
-      totalAssets: emptyMetric,
-      currentAssets: emptyMetric,
-      totalLiabilities: emptyMetric,
-      currentLiabilities: emptyMetric,
-      shareholdersEquity: emptyMetric,
-      cash: emptyMetric,
-      debt: undefined,
-    },
-    cashFlow: {
-      operatingCashFlow: emptyMetric,
-      investingCashFlow: emptyMetric,
-      financingCashFlow: emptyMetric,
-      freeCashFlow: undefined,
-      capitalExpenditures: undefined,
-    },
-    profitabilityRatios: {
-      grossMargin: emptyRatio,
-      operatingMargin: emptyRatio,
-      netMargin: emptyRatio,
-      roe: emptyRatio,
-      roa: emptyRatio,
-    },
-    liquidityRatios: {
-      currentRatio: emptyRatio,
-      quickRatio: emptyRatio,
-      workingCapital: emptyMetric,
-    },
-    leverageRatios: {
-      debtToEquity: emptyRatio,
-      debtToAssets: emptyRatio,
-    },
-  };
-}
-
-/**
- * MAIN: Analyze both layers
- */
-export async function analyzeTwoLayerFinancials(
-  item8Text: string,
-  item15Text: string,
-  xbrlData: { raw: any; metrics: any; formatter: any } | null,
-  openai: OpenAI,
-  companyName: string
-): Promise<TwoLayerFinancials | null> {
-  try {
-    console.log("📊 [Two-Layer Analysis] Starting...");
-    console.log(`   Item 8 text: ${item8Text.length} chars`);
-    console.log(`   Item 15 text: ${item15Text.length} chars`);
-    console.log(`   XBRL available: ${!!xbrlData}`);
-
-    const combinedText = `${item8Text}\n\n=== EXHIBITS & FOOTNOTES ===\n\n${item15Text}`;
-
-    // Layer 1: XBRL Metrics (if available)
-    let xbrlMetrics: XBRLMetrics;
-    if (xbrlData && xbrlData.metrics) {
-      console.log("   Analyzing XBRL metrics...");
-      xbrlMetrics = await analyzeXBRLMetrics(xbrlData);
-      console.log("   ✅ XBRL metrics analyzed");
-    } else {
-      console.log("   ⚠️  No XBRL data available, using empty structure");
-      xbrlMetrics = createEmptyXBRLMetrics();
-    }
-
-    // Layer 2: Narrative Analysis
-    console.log("   Analyzing narrative text...");
-    const narrativeAnalysis = await analyzeNarrativeText(
-      combinedText,
-      openai,
-      companyName
-    );
-    console.log("   ✅ Narrative analysis complete");
-
-    const result: TwoLayerFinancials = {
-      xbrlMetrics,
-      narrativeAnalysis,
+    console.log("   Validating with Zod schema...");
+    const validated = twoLayerFinancialsSchema.parse({
+      ...parsed,
       analysisDate: new Date().toISOString(),
       sourceFiles: {
         item8Length: item8Text.length,
         item15Length: item15Text.length,
         combinedLength: combinedText.length,
       },
-    };
+    });
 
-    console.log("📊 [Two-Layer Analysis] ✅ Complete");
-    return result;
+    console.log("📊 [Integrated Financial Analysis] ✅ Complete");
+    return validated;
   } catch (error) {
     console.error("[analyzeTwoLayerFinancials] Error:", error);
+    if (error instanceof z.ZodError) {
+      console.error(
+        "Validation errors:",
+        JSON.stringify(error.issues, null, 2)
+      );
+    }
     return null;
   }
 }
