@@ -5,217 +5,44 @@ import {
   twoLayerFinancialsSchema,
   TwoLayerFinancials,
 } from "../schemas/TwoLayerFinancialsSchema";
-import { JSON_EXCERPT_INSTRUCTION } from "../constants/llm-instructions";
 
-/**
- * XBRL metriklerini LLM için formatla
- */
 function formatXBRLForPrompt(xbrlData: {
   raw: any;
   metrics: any;
   formatter: any;
 }): string {
   const { metrics, formatter } = xbrlData;
-
-  let formatted = "=== XBRL KEY METRICS ===\n\n";
+  let formatted = "=== XBRL STRUCTURED DATA ===\n\n";
 
   if (metrics.revenue) {
-    formatted += `Revenue:\n`;
-    formatted += `  Current: ${formatter.formatFinancialNumber(
+    formatted += `Revenue: ${formatter.formatFinancialNumber(
       metrics.revenue.current
-    )}\n`;
-    formatted += `  Previous: ${formatter.formatFinancialNumber(
+    )} (current), ${formatter.formatFinancialNumber(
       metrics.revenue.previous
-    )}\n`;
-    const change = (
-      ((metrics.revenue.current - metrics.revenue.previous) /
-        Math.abs(metrics.revenue.previous)) *
-      100
-    ).toFixed(2);
-    formatted += `  Change: ${change}%\n\n`;
+    )} (previous)\n`;
   }
-
-  if (metrics.cogs) {
-    formatted += `Cost of Sales:\n`;
-    formatted += `  Current: ${formatter.formatFinancialNumber(
-      metrics.cogs.current
-    )}\n`;
-    formatted += `  Previous: ${formatter.formatFinancialNumber(
-      metrics.cogs.previous
-    )}\n\n`;
-  }
-
-  if (metrics.grossProfit || (metrics.revenue && metrics.cogs)) {
-    const gpCurrent =
-      metrics.grossProfit?.current ||
-      metrics.revenue.current - metrics.cogs.current;
-    const gpPrevious =
-      metrics.grossProfit?.previous ||
-      metrics.revenue.previous - metrics.cogs.previous;
-    formatted += `Gross Profit:\n`;
-    formatted += `  Current: ${formatter.formatFinancialNumber(gpCurrent)}\n`;
-    formatted += `  Previous: ${formatter.formatFinancialNumber(
-      gpPrevious
-    )}\n\n`;
-  }
-
-  if (metrics.opex) {
-    formatted += `Operating Expenses:\n`;
-    formatted += `  Current: ${formatter.formatFinancialNumber(
-      metrics.opex.current
-    )}\n`;
-    formatted += `  Previous: ${formatter.formatFinancialNumber(
-      metrics.opex.previous
-    )}\n\n`;
-  }
-
-  if (metrics.operatingIncome) {
-    formatted += `Operating Income:\n`;
-    formatted += `  Current: ${formatter.formatFinancialNumber(
-      metrics.operatingIncome.current
-    )}\n`;
-    formatted += `  Previous: ${formatter.formatFinancialNumber(
-      metrics.operatingIncome.previous
-    )}\n\n`;
-  }
-
   if (metrics.netIncome) {
-    formatted += `Net Income:\n`;
-    formatted += `  Current: ${formatter.formatFinancialNumber(
+    formatted += `Net Income: ${formatter.formatFinancialNumber(
       metrics.netIncome.current
-    )}\n`;
-    formatted += `  Previous: ${formatter.formatFinancialNumber(
+    )} (current), ${formatter.formatFinancialNumber(
       metrics.netIncome.previous
-    )}\n\n`;
+    )} (previous)\n`;
   }
-
-  if (metrics.eps) {
-    formatted += `EPS (Diluted):\n`;
-    formatted += `  Current: $${metrics.eps.current.toFixed(2)}\n`;
-    formatted += `  Previous: $${metrics.eps.previous.toFixed(2)}\n\n`;
-  }
-
   if (metrics.totalAssets) {
-    formatted += `Total Assets:\n`;
-    formatted += `  Current: ${formatter.formatFinancialNumber(
+    formatted += `Total Assets: ${formatter.formatFinancialNumber(
       metrics.totalAssets.current
-    )}\n`;
-    formatted += `  Previous: ${formatter.formatFinancialNumber(
-      metrics.totalAssets.previous
-    )}\n\n`;
+    )} (current)\n`;
   }
-
-  if (metrics.currentAssets) {
-    formatted += `Current Assets:\n`;
-    formatted += `  Current: ${formatter.formatFinancialNumber(
-      metrics.currentAssets.current
-    )}\n`;
-    formatted += `  Previous: ${formatter.formatFinancialNumber(
-      metrics.currentAssets.previous
-    )}\n\n`;
-  }
-
-  if (metrics.totalLiabilities) {
-    formatted += `Total Liabilities:\n`;
-    formatted += `  Current: ${formatter.formatFinancialNumber(
-      metrics.totalLiabilities.current
-    )}\n`;
-    formatted += `  Previous: ${formatter.formatFinancialNumber(
-      metrics.totalLiabilities.previous
-    )}\n\n`;
-  }
-
-  if (metrics.currentLiabilities) {
-    formatted += `Current Liabilities:\n`;
-    formatted += `  Current: ${formatter.formatFinancialNumber(
-      metrics.currentLiabilities.current
-    )}\n`;
-    formatted += `  Previous: ${formatter.formatFinancialNumber(
-      metrics.currentLiabilities.previous
-    )}\n\n`;
-  }
-
-  if (metrics.equity) {
-    formatted += `Shareholders' Equity:\n`;
-    formatted += `  Current: ${formatter.formatFinancialNumber(
-      metrics.equity.current
-    )}\n`;
-    formatted += `  Previous: ${formatter.formatFinancialNumber(
-      metrics.equity.previous
-    )}\n\n`;
-  }
-
-  if (metrics.cash) {
-    formatted += `Cash and Cash Equivalents:\n`;
-    formatted += `  Current: ${formatter.formatFinancialNumber(
-      metrics.cash.current
-    )}\n`;
-    formatted += `  Previous: ${formatter.formatFinancialNumber(
-      metrics.cash.previous
-    )}\n\n`;
-  }
-
   if (metrics.operatingCashFlow) {
-    formatted += `Operating Cash Flow:\n`;
-    formatted += `  Current: ${formatter.formatFinancialNumber(
+    formatted += `Operating Cash Flow: ${formatter.formatFinancialNumber(
       metrics.operatingCashFlow.current
-    )}\n`;
-    formatted += `  Previous: ${formatter.formatFinancialNumber(
-      metrics.operatingCashFlow.previous
-    )}\n\n`;
+    )} (current)\n`;
   }
 
-  if (metrics.investingCashFlow) {
-    formatted += `Investing Cash Flow:\n`;
-    formatted += `  Current: ${formatter.formatFinancialNumber(
-      metrics.investingCashFlow.current
-    )}\n`;
-    formatted += `  Previous: ${formatter.formatFinancialNumber(
-      metrics.investingCashFlow.previous
-    )}\n\n`;
-  }
-
-  if (metrics.financingCashFlow) {
-    formatted += `Financing Cash Flow:\n`;
-    formatted += `  Current: ${formatter.formatFinancialNumber(
-      metrics.financingCashFlow.current
-    )}\n`;
-    formatted += `  Previous: ${formatter.formatFinancialNumber(
-      metrics.financingCashFlow.previous
-    )}\n\n`;
-  }
-
-  formatted += "=== END XBRL ===\n";
+  formatted += "\n=== END XBRL ===\n";
   return formatted;
 }
 
-/**
- * Empty XBRL metrics when not available
- */
-function createEmptyXBRLMetrics() {
-  return {
-    revenue: null,
-    cogs: null,
-    grossProfit: null,
-    opex: null,
-    operatingIncome: null,
-    netIncome: null,
-    eps: null,
-    totalAssets: null,
-    currentAssets: null,
-    totalLiabilities: null,
-    currentLiabilities: null,
-    equity: null,
-    cash: null,
-    operatingCashFlow: null,
-    investingCashFlow: null,
-    financingCashFlow: null,
-  };
-}
-
-/**
- * ANA ANALİZ FONKSİYONU - ENTEGRE
- */
 export async function analyzeTwoLayerFinancials(
   item8Text: string,
   item15Text: string,
@@ -224,53 +51,75 @@ export async function analyzeTwoLayerFinancials(
   companyName: string
 ): Promise<TwoLayerFinancials | null> {
   try {
-    console.log("📊 [Integrated Financial Analysis] Starting...");
-
-    const combinedText = `${item8Text}\n\n=== EXHIBITS & FOOTNOTES ===\n\n${item15Text}`;
-
-    // XBRL verilerini formatla
+    const combinedText = `${item8Text}\n\n=== EXHIBITS ===\n\n${item15Text}`;
     const xbrlFormatted = xbrlData
       ? formatXBRLForPrompt(xbrlData)
-      : "⚠️ XBRL data not available - extract all information from narrative text.\n";
+      : "⚠️ No XBRL data\n";
 
-    const prompt = `You are analyzing Financial Statements (Item 8 + Item 15) for ${companyName}.
+    const prompt = `Analyze Financial Statements for ${companyName}.
 
-**CRITICAL INSTRUCTIONS:**
-1. **INTEGRATE**: For each financial item (Revenue, Net Income, etc.), combine:
-   - Quantitative data from XBRL metrics (if available)
-   - Qualitative explanations from narrative text
-   
-2. **CONTEXTUALIZE**: Explain what the numbers mean based on narrative context
+**🔴 CRITICAL EXCERPT RULE:**
 
-3. **EXCERPTS ARE MANDATORY**: 
-   - Extract direct quotes from NARRATIVE TEXT ONLY (never from XBRL)
-   - Every policy, insight, and risk MUST have a supporting excerpt
-   - Use complete sentences (1-3 sentences)
+Every 'excerpt' field MUST contain:
+✅ EXACT, WORD-FOR-WORD copy-paste from the text below (1-3 sentences)
+✅ Keep ALL original punctuation, numbers, symbols (®, ™, $, %)
+❌ NEVER paraphrase, summarize, or write your own sentences
 
-4. **FOCUS**: Prioritize:
-   - Significant accounting policies
-   - Unusual items or one-time charges
-   - Commitments and contingencies
-   - Identified risks
-   - Management commentary
+Example WRONG (your words):
+"Revenue increased due to strong iPhone sales."
 
-5. **STRUCTURE**: Fill the JSON schema completely. For missing data, use appropriate defaults.
+Example CORRECT (exact quote):
+"Total net sales increased 2% or $7.8 billion during 2024 compared to 2023, driven primarily by growth in iPhone and Services revenue."
+
+---
 
 ${xbrlFormatted}
 
-=== NARRATIVE TEXT (ITEM 8 + ITEM 15) ===
-${combinedText}
-=== END NARRATIVE TEXT ===
+=== FINANCIAL TEXT (Item 8 + Item 15) ===
+${combinedText.substring(0, 120000)}
+=== END TEXT ===
 
-${JSON_EXCERPT_INSTRUCTION}
+---
 
-Return comprehensive JSON following this structure:
+**TASK:**
+
+For each financial item (Revenue, Net Income, etc.), provide:
+
+1. **metric**: Numbers from XBRL (if available) or extract from text
+   - current, previous, change, changePercentage
+
+2. **summary**: 1-2 sentence overview of this specific item
+
+3. **commentary**: 2-4 sentences with detailed explanation of:
+   - What drove the change?
+   - Any unusual items?
+   - Management's perspective?
+
+4. **excerpt**: EXACT QUOTE from text that supports your summary/commentary
+
+5. **policies** (if relevant): Array of related accounting policies
+   - Each with: policy name, description, EXACT QUOTE excerpt
+
+6. **insights** (if significant): Array of key findings
+   - Each with: topic, summary, significance (high/medium/low), EXACT QUOTE
+
+7. **risks** (if any): Array of risks related to this item
+   - Each with: description, mitigation, EXACT QUOTE
+
+Also provide:
+- **globalCommitments**: Purchase commitments, capital commitments
+- **globalPolicies**: Critical accounting policies
+- **globalRisks**: Overall financial risks
+- **subsequentEvents**: Post-balance sheet events
+- **overallAssessment**: Strengths, concerns, unusual items
+
+**Return JSON:**
 
 {
   "executiveSummary": {
-    "overview": "2-3 sentence overview of financial health",
+    "overview": "2-3 sentence overview",
     "keyHighlights": ["Highlight 1", "Highlight 2"],
-    "excerpt": "Key management statement from text"
+    "excerpt": "EXACT QUOTE"
   },
   
   "incomeStatement": {
@@ -279,102 +128,79 @@ Return comprehensive JSON following this structure:
       "metric": {
         "current": "$391.04B",
         "previous": "$383.29B",
-        "change": "$7.75B",
         "changePercentage": "2.02%"
       },
-      "narrativeSummary": "Brief explanation of revenue trends from narrative",
-      "relevantPolicies": [
+      "summary": "Revenue grew 2% driven by iPhone and Services",
+      "commentary": "The increase was primarily due to higher iPhone unit sales in emerging markets and continued growth in the Services segment, particularly App Store and subscriptions. However, Mac revenue declined due to supply constraints.",
+      "excerpt": "Total net sales increased 2% or $7.8 billion during 2024 compared to 2023, driven primarily by growth in iPhone and Services revenue.",
+      "policies": [
         {
           "policy": "Revenue Recognition",
-          "description": "How revenue is recognized",
-          "changes": "Any changes from prior period",
-          "excerpt": "Direct quote describing policy"
+          "description": "Revenue is recognized when control transfers to customer",
+          "excerpt": "EXACT QUOTE from text"
         }
       ],
-      "keyInsights": [
+      "insights": [
         {
-          "summary": "Significant finding about revenue",
+          "topic": "Services Growth",
+          "summary": "Services revenue grew 15% YoY to $85.2B",
           "significance": "high",
-          "excerpt": "Direct quote supporting this insight"
+          "excerpt": "EXACT QUOTE"
         }
       ],
-      "risks": [
-        {
-          "description": "Risk related to revenue",
-          "mitigationStrategy": "How it's managed",
-          "excerpt": "Direct quote about risk"
-        }
-      ],
-      "excerpt": "Overall excerpt about revenue if available"
+      "risks": []
     },
-    "costOfSales": { /* Same structure */ },
-    "grossProfit": { /* Same structure */ },
-    "operatingExpenses": { /* Same structure */ },
-    "operatingIncome": { /* Same structure */ },
+    
     "netIncome": {
       "label": "Net Income",
-      "metric": { /* XBRL data */ },
-      "narrativeSummary": "Explanation of net income drivers",
-      "keyInsights": [
+      "metric": {
+        "current": "$93.74B",
+        "previous": "$97.00B",
+        "changePercentage": "-3.36%"
+      },
+      "summary": "Net income declined 3.4% due to higher tax rate",
+      "commentary": "Despite revenue growth and improved gross margins, net income decreased due to a one-time transition tax charge of $10.3 billion related to the Tax Cuts and Jobs Act. Excluding this charge, net income would have increased approximately 7%.",
+      "excerpt": "EXACT QUOTE about tax charge",
+      "insights": [
         {
-          "summary": "E.g., One-time tax charge of $10.3B",
+          "topic": "One-time Tax Charge",
+          "summary": "$10.3B charge significantly impacted net income",
           "significance": "high",
-          "excerpt": "Direct quote about the charge"
+          "excerpt": "EXACT QUOTE"
         }
-      ],
-      /* ... */
+      ]
     },
-    "eps": { /* Same structure */ }
+    
+    // ... (similar for other income statement items)
   },
   
   "balanceSheet": {
-    "totalAssets": { /* Same integrated structure */ },
-    "currentAssets": { /* Same integrated structure */ },
-    "totalLiabilities": { /* Same integrated structure */ },
-    "currentLiabilities": { /* Same integrated structure */ },
-    "shareholdersEquity": { /* Same integrated structure */ },
-    "cash": { /* Same integrated structure */ }
+    "totalAssets": { ... },
+    "cash": { ... }
   },
   
   "cashFlow": {
-    "operatingCashFlow": { /* Same integrated structure */ },
-    "investingCashFlow": { /* Same integrated structure */ },
-    "financingCashFlow": { /* Same integrated structure */ }
+    "operatingCashFlow": { ... }
   },
   
   "ratios": {
-    "currentRatio": {
-      "label": "Current Ratio",
-      "metric": {
-        "current": "1.32",
-        "previous": "1.28"
-      },
-      "narrativeSummary": "Explanation of liquidity position",
-      "excerpt": "Direct quote if available"
-    },
-    "grossMargin": { /* Same structure */ },
-    "operatingMargin": { /* Same structure */ },
-    "netMargin": { /* Same structure */ },
-    "roe": { /* Same structure */ }
+    "grossMargin": { ... }
   },
   
-  "commitmentsContingencies": [
+  "globalCommitments": [
     {
       "type": "Purchase Commitments",
-      "description": "Component manufacturing commitments",
+      "description": "Non-cancellable component purchase obligations",
       "amount": "$147.7B",
-      "timing": "Next 5 years",
-      "probability": "probable",
-      "excerpt": "Direct quote"
+      "excerpt": "EXACT QUOTE"
     }
   ],
   
-  "significantAccountingPolicies": [
+  "globalPolicies": [
     {
       "policy": "Stock-Based Compensation",
       "description": "How SBC is accounted for",
-      "changes": "Any changes from prior year",
-      "excerpt": "Direct quote"
+      "excerpt": "EXACT QUOTE"
     }
   ],
   
@@ -383,32 +209,32 @@ Return comprehensive JSON following this structure:
       "event": "Quarterly dividend declared",
       "date": "November 2024",
       "impact": "$0.25 per share",
-      "excerpt": "Direct quote"
+      "excerpt": "EXACT QUOTE"
     }
   ],
   
   "overallAssessment": {
-    "strengths": ["Strong cash generation", "Improving margins"],
-    "concerns": ["Tax uncertainty", "FX exposure"],
-    "unusualItems": ["$10.3B one-time charge"],
-    "summary": "Overall financial health assessment",
-    "excerpt": "Management's overall commentary"
+    "strengths": ["Strong cash generation", "Growing margins"],
+    "concerns": ["Tax headwinds", "FX exposure"],
+    "unusualItems": ["$10.3B one-time tax charge"],
+    "summary": "Overall strong position despite one-time charges",
+    "excerpt": "EXACT QUOTE"
   }
-}`;
+}
 
-    console.log("   Calling OpenAI with integrated analysis prompt...");
+**REMEMBER: All excerpts = EXACT QUOTES. No paraphrasing!**
+`;
 
     const result = await openai.chat.completions.create({
       model: "gpt-4o",
       messages: [{ role: "user", content: prompt }],
       response_format: { type: "json_object" },
       temperature: 0.1,
-      max_tokens: 12000,
+      max_tokens: 16000,
     });
 
     const parsed = JSON.parse(result.choices[0].message.content || "{}");
 
-    console.log("   Validating with Zod schema...");
     const validated = twoLayerFinancialsSchema.parse({
       ...parsed,
       analysisDate: new Date().toISOString(),
@@ -419,7 +245,7 @@ Return comprehensive JSON following this structure:
       },
     });
 
-    console.log("📊 [Integrated Financial Analysis] ✅ Complete");
+    console.log("📊 ✅ Analysis complete");
     return validated;
   } catch (error) {
     console.error("[analyzeTwoLayerFinancials] Error:", error);
